@@ -9,7 +9,10 @@
 
 本机调试（无树莓派）时会自动进入模拟模式：按键盘 1/2/3 代替 K1/K2/K3。
 """
+import os
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "common"))
 
 import spi_lcd
 

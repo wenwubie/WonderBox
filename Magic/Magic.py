@@ -1,4 +1,4 @@
-"""SPI LCD 塔罗占卜屋，显示与按键约定复用 Pokemon/spi_lcd.py。"""
+"""SPI LCD 塔罗占卜屋，显示与按键约定复用 common/spi_lcd.py。"""
 import os
 import math
 import random
@@ -7,7 +7,7 @@ import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))
-from Pokemon import spi_lcd
+from common import spi_lcd
 
 if spi_lcd.is_simulate():
 	spi_lcd.WINDOW_SCALE = 2

@@ -9,7 +9,7 @@ import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))
-from Pokemon import spi_lcd
+from common import spi_lcd
 
 import pygame
 
