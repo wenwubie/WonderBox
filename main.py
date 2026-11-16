@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import glob
 import importlib
+import math
 import os
 import subprocess
 import sys
@@ -135,8 +136,13 @@ class LauncherDisplay:
         self.game_rects = [pygame.Rect(margin + (index % 2) * (width + gap),
                                       top + (index // 2) * (height + gap), width, height)
                            for index in range(len(GAMES))]
-        # 设置: 主界面右上角的小齿轮(光标导航的最后一项)
-        self.settings_rect = pygame.Rect(self.width - 35, 6, 28, 28)
+        # 设置: 主界面右上角的小齿轮(与"奇趣宝盒"文字行平行对齐)
+        subtitle_y = 30 if self.portrait else 27
+        gear_size = 22
+        self.settings_rect = pygame.Rect(
+            self.width - gear_size - 10,
+            subtitle_y + (self.chinese_font.get_height() - gear_size) // 2,
+            gear_size, gear_size)
         self.buttons = [pygame.Rect(index * self.width // 3, self.footer_top,
                                     (index + 1) * self.width // 3 - index * self.width // 3, 27)
                         for index in range(3)]
@@ -267,7 +273,8 @@ class LauncherDisplay:
         self.draw_logo(10, 7, size)
         self.text("Wonder Box", self.brand_font, LIGHT, (size + 17, 7))
         self.text("奇趣宝盒", self.chinese_font, LIGHT_TEAL, (size + 18, 30 if self.portrait else 27))
-        pygame.draw.line(self.screen, DARK_LINE, (10, self.section_y - 6), (self.width - 10, self.section_y - 6))
+        pygame.draw.line(self.screen, DARK_LINE, (10, self.section_y - 6),
+                         (self.settings_rect.left - 8, self.section_y - 6))
         if state.show_declaration:
             self.draw_declaration()
             self.draw_footer(False, declaration=True)
@@ -298,19 +305,28 @@ class LauncherDisplay:
         self.draw_footer(state.confirming_power)
 
     def draw_gear(self, rect, selected):
-        """主界面右上角的设置齿轮; 选中时高亮成小卡片。"""
+        """主界面右上角的设置齿轮(齿盘+8齿+中心孔), 尺寸随 rect 自适应。"""
         if selected:
-            pygame.draw.rect(self.screen, SELECTED, rect, border_radius=6)
-            pygame.draw.rect(self.screen, TEAL, rect, 2, border_radius=6)
-            color = INK
+            pygame.draw.rect(self.screen, SELECTED, rect, border_radius=5)
+            pygame.draw.rect(self.screen, TEAL, rect, 2, border_radius=5)
+            color, backdrop = INK, SELECTED
         else:
-            color = LIGHT_MUTED
+            color, backdrop = LIGHT_MUTED, BACKGROUND
         center = rect.center
-        pygame.draw.circle(self.screen, color, center, 8, 2)
-        pygame.draw.circle(self.screen, color, center, 3)
-        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-            pygame.draw.line(self.screen, color, (center[0] + dx * 8, center[1] + dy * 8),
-                             (center[0] + dx * 11, center[1] + dy * 11), 2)
+        scale = rect.width / 28.0
+        body = round(9 * scale)
+        hole = max(2, round(3 * scale))
+        tooth = round(12 * scale)
+        width = max(2, round(3 * scale))
+        teeth = 8
+        pygame.draw.circle(self.screen, color, center, body)      # 齿盘主体
+        for index in range(teeth):                                # 均匀分布的齿
+            angle = math.pi * 2 * index / teeth
+            dx, dy = math.cos(angle), math.sin(angle)
+            start = (round(center[0] + dx * (body - 2 * scale)), round(center[1] + dy * (body - 2 * scale)))
+            end = (round(center[0] + dx * tooth), round(center[1] + dy * tooth))
+            pygame.draw.line(self.screen, color, start, end, width)
+        pygame.draw.circle(self.screen, backdrop, center, hole)   # 中心孔露出底色
 
     def draw_settings_page(self):
         self.text("Wonder Box", self.brand_font, LIGHT, (10, 7))
