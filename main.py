@@ -1,10 +1,12 @@
 """Wonder Box 奇趣宝盒的游戏入口。"""
 
 from dataclasses import dataclass
+import glob
 import importlib
 import os
 import subprocess
 import sys
+import time
 
 from common import spi_lcd
 
@@ -76,13 +78,18 @@ class LauncherState:
         return None
 
 
-BACKGROUND = (237, 247, 244)
-PAPER = (255, 255, 253)
-INK = (35, 57, 59)
-MUTED = (93, 120, 115)
-TEAL = (42, 133, 123)
-LINE = (198, 221, 214)
-CORAL = (214, 91, 77)
+BACKGROUND = (46, 64, 60)      # 深灰绿底, 与象牙色卡片拉开层次
+PAPER = (246, 244, 236)        # 象牙色卡片
+INK = (52, 70, 68)
+MUTED = (108, 130, 124)
+TEAL = (74, 145, 135)
+LINE = (188, 205, 196)
+CORAL = (204, 103, 90)
+LIGHT = (228, 235, 229)        # 深底上的正文浅色
+LIGHT_TEAL = (138, 194, 182)   # 深底上的强调浅色
+LIGHT_MUTED = (160, 180, 173)  # 深底上的次要文字
+DARK_LINE = (92, 114, 106)     # 深底上的分隔线
+FOOTER_BG = (56, 76, 69)       # 底部按键栏(深色)
 DECLARATION_LINES = ("此宝盒仅允许我或我的朋友", "文怡然、文焕然、", "欧泽轩、欧阳沐希使用，", "否则将大祸临头")
 
 
@@ -218,35 +225,36 @@ class LauncherDisplay:
                 pygame.draw.circle(self.screen, PAPER, (center[0] + dx, center[1] + dy), 3)
 
     def draw_footer(self, confirming, declaration=False):
-        pygame.draw.rect(self.screen, (218, 237, 230), (0, self.footer_top, self.width, 27))
+        pygame.draw.rect(self.screen, FOOTER_BG, (0, self.footer_top, self.width, 27))
         labels = (("", "", "确认") if declaration else
                   ("切换", "切换", "确认") if confirming else ("上一项", "下一项", "进入"))
         for label, rect in zip(labels, self.buttons):
             if label:
-                self.centered(label, self.button_font, TEAL, rect.center)
+                self.centered(label, self.button_font, LIGHT_TEAL, rect.center)
 
     def draw(self, state):
         self.screen.fill(BACKGROUND)
         for dot_y in range(10, self.footer_top, 24):
             for dot_x in range(12, self.width, 24):
-                pygame.draw.circle(self.screen, (222, 240, 233), (dot_x, dot_y), 1)
+                pygame.draw.circle(self.screen, (62, 82, 74), (dot_x, dot_y), 1)
         size = 38 if self.portrait else 32
         self.draw_logo(10, 7, size)
-        self.text("Wonder Box", self.brand_font, INK, (size + 17, 7))
-        self.text("奇趣宝盒", self.chinese_font, TEAL, (size + 18, 30 if self.portrait else 27))
-        pygame.draw.line(self.screen, LINE, (10, self.section_y - 6), (self.width - 10, self.section_y - 6))
+        self.text("Wonder Box", self.brand_font, LIGHT, (size + 17, 7))
+        self.text("奇趣宝盒", self.chinese_font, LIGHT_TEAL, (size + 18, 30 if self.portrait else 27))
+        pygame.draw.line(self.screen, DARK_LINE, (10, self.section_y - 6), (self.width - 10, self.section_y - 6))
         if state.show_declaration:
             self.draw_declaration()
             self.draw_footer(False, declaration=True)
             return
-        self.text(state.notice or "全部游戏", self.small_font, CORAL if state.notice else MUTED,
+        self.text(state.notice or "全部游戏", self.small_font,
+                  (230, 132, 116) if state.notice else LIGHT_MUTED,
                   (11, self.section_y))
         count = "%02d / %02d" % (state.selected + 1, len(GAMES))
-        count_image = self.small_font.render(count, True, TEAL)
+        count_image = self.small_font.render(count, True, LIGHT_TEAL)
         self.screen.blit(count_image, (self.width - count_image.get_width() - 11, self.section_y))
         for index, (game, rect) in enumerate(zip(GAMES, self.game_rects)):
             selected = index == state.selected
-            pygame.draw.rect(self.screen, (224, 244, 235) if selected else PAPER, rect, border_radius=6)
+            pygame.draw.rect(self.screen, (217, 235, 226) if selected else PAPER, rect, border_radius=6)
             pygame.draw.rect(self.screen, TEAL if selected else LINE, rect, 2 if selected else 1, border_radius=6)
             icon = pygame.Rect(rect.x + 7, rect.centery - 13, 26, 26)
             self.draw_icon(game, icon)
@@ -263,10 +271,10 @@ class LauncherDisplay:
         self.draw_footer(state.confirming_power)
 
     def draw_declaration(self):
-        self.centered("使用声明", self.dialog_font, INK, (self.width // 2, self.section_y + 12))
+        self.centered("使用声明", self.dialog_font, LIGHT, (self.width // 2, self.section_y + 12))
         line_gap = 24 if self.portrait else 22
         for index, line in enumerate(DECLARATION_LINES):
-            color = CORAL if index == len(DECLARATION_LINES) - 1 else INK
+            color = (230, 132, 116) if index == len(DECLARATION_LINES) - 1 else LIGHT
             self.centered(line, self.declaration_font, color,
                           (self.width // 2, self.section_y + 40 + index * line_gap))
         pygame.draw.rect(self.screen, TEAL, self.declaration_button, border_radius=5)
@@ -282,8 +290,8 @@ class LauncherDisplay:
         self.centered("将关闭奇趣宝盒", self.small_font, MUTED, (self.dialog.centerx, self.dialog.y + 60))
         for index, (label, rect) in enumerate(zip(("取消", "关机"), self.power_buttons)):
             selected = index == state.power_selected
-            color = (245, 220, 215) if selected and index == 1 else \
-                    (219, 241, 230) if selected else (244, 248, 246)
+            color = (234, 214, 208) if selected and index == 1 else \
+                    (212, 228, 219) if selected else (240, 240, 234)
             pygame.draw.rect(self.screen, color, rect, border_radius=5)
             pygame.draw.rect(self.screen, CORAL if selected and index == 1 else TEAL if selected else LINE,
                              rect, 2 if selected else 1, border_radius=5)
@@ -300,13 +308,37 @@ def launch_game(game, simulate, portrait):
     return subprocess.run(command, cwd=ROOT_DIR, env=environment, check=False).returncode
 
 
+def blank_screen(screen):
+    """关机前把 SPI 屏彻底刷成全黑（三重保险）。
+
+    1. pygame 画布 fill 黑色并 present 刷一帧;
+    2. 绕过 pygame 直接把 /dev/fb1 清零(即使上面一步失败也生效);
+    3. fbtft 注册了 backlight 时写 fb blank, 直接熄灭背光。
+    """
+    try:
+        screen.fill((0, 0, 0))
+        spi_lcd.present(poll_events=False)
+    except (RuntimeError, pygame.error):
+        pass
+    time.sleep(0.2)  # 等 SPI 传输真正落到面板上再发关机命令
+    try:
+        with open(spi_lcd.FB_DEV, "wb") as f:
+            f.write(bytes(spi_lcd.FB_WIDTH * spi_lcd.FB_HEIGHT * 2))
+    except OSError:
+        pass
+    for path in glob.glob("/sys/class/graphics/fb*/blank"):
+        try:
+            with open(path, "w") as f:
+                f.write("4")  # FB_BLANK_POWERDOWN: 熄屏并关背光
+        except OSError:
+            pass
+
+
 def request_shutdown(screen, simulate):
     if simulate:
         return False, "模拟模式不会关机"
     try:
-        screen.fill((0, 0, 0))
-        if not spi_lcd.present(poll_events=False):
-            return False, "屏幕关闭失败"
+        blank_screen(screen)  # 先把屏幕刷成全黑, 再发关机命令
         command = ["shutdown", "-h", "now"]
         if not (hasattr(os, "geteuid") and os.geteuid() == 0):
             command = ["sudo", "-n"] + command
