@@ -23,16 +23,17 @@ import pygame  # noqa: E402
 WIDTH, HEIGHT = screen.get_size()
 PORTRAIT = HEIGHT > WIDTH
 
-BG = (255, 246, 248)
-INK = (83, 53, 78)
-MUTED = (151, 124, 145)
-PINK = (238, 137, 172)
-PINK_DARK = (192, 93, 139)
-LILAC = (190, 174, 226)
-MINT = (157, 211, 194)
-GOLD = (232, 190, 104)
-PANEL = (255, 253, 250)
-LINE = (242, 222, 230)
+BG = (15, 44, 38)
+INK = (242, 247, 237)
+MUTED = (181, 209, 193)
+CORAL = (244, 136, 119)
+MINT = (120, 211, 175)
+GOLD = (244, 197, 108)
+PANEL = (30, 72, 57)
+PANEL_SELECTED = (40, 92, 64)
+PANEL_INNER = (19, 55, 44)
+ICON_BG = (57, 115, 84)
+LINE = (101, 158, 124)
 MYSTIC_BG = (18, 15, 31)
 MYSTIC_PANEL = (38, 29, 52)
 MYSTIC_INNER = (27, 22, 43)
@@ -40,6 +41,9 @@ MYSTIC_LINE = (113, 91, 145)
 MYSTIC_GOLD = (224, 188, 120)
 MYSTIC_TEXT = (245, 231, 211)
 MYSTIC_MUTED = (177, 161, 190)
+DISABLED_BG = (60, 62, 64)
+DISABLED_BORDER = (126, 130, 130)
+DISABLED_TEXT = (175, 181, 180)
 
 font_title = spi_lcd.load_font(21 if WIDTH >= 300 else 19)
 font_heading = spi_lcd.load_font(17)
@@ -49,8 +53,11 @@ font_small = spi_lcd.load_font(11 if WIDTH >= 300 else 10)
 MODES = ["今日运势", "星座查询", "情感预测"]
 MODE_HINTS = ["抽一张今日指引", "探索星座小档案", "看看近期桃花能量"]
 TOPICS = ["性格", "感情", "事业", "关系", "天赋"]
-SPIN_DURATION = 7.0
+FRAME_RATE = 20
+SPIN_DURATION = 5.0
 SPIN_SETTLE_SECONDS = 0.25
+CARD_REVEAL_SECONDS = 1.4
+CARD_REVEAL_HOLD_SECONDS = 0.4
 LOVE_PAGE_COUNT = 2
 LOVE_SECTIONS_PER_PAGE = 2
 
@@ -295,16 +302,19 @@ def footer_button_rects():
 			for index in range(3)]
 
 
-def draw_footer(labels, dark=False):
+def draw_footer(labels, dark=False, enabled=(True, True, True)):
 	pygame.draw.line(screen, LINE, (5, HEIGHT - 23), (WIDTH - 5, HEIGHT - 23), 1)
 	if dark:
 		pygame.draw.line(screen, MYSTIC_LINE, (5, HEIGHT - 23), (WIDTH - 5, HEIGHT - 23), 1)
 	for index, (label, rect) in enumerate(zip(labels, footer_button_rects())):
-		color = ((65, 48, 80) if index == 0 else MYSTIC_PANEL) if dark else \
-			((255, 236, 243) if index == 0 else PANEL)
-		border = MYSTIC_LINE if dark else LINE
-		text_color = MYSTIC_GOLD if dark and index == 0 else MYSTIC_MUTED if dark else \
-			(PINK_DARK if index == 0 else MUTED)
+		if not enabled[index]:
+			color, border, text_color = DISABLED_BG, DISABLED_BORDER, DISABLED_TEXT
+		else:
+			color = ((65, 48, 80) if index == 2 else MYSTIC_PANEL) if dark else \
+				(PANEL_SELECTED if index == 2 else PANEL)
+			border = MYSTIC_LINE if dark else LINE
+			text_color = MYSTIC_GOLD if dark and index == 2 else MYSTIC_MUTED if dark else \
+				(GOLD if index == 2 else MUTED)
 		rounded(rect, color, 5, 1, border)
 		image = font_small.render(label, True, text_color)
 		screen.blit(image, (rect.centerx - image.get_width() // 2,
@@ -313,18 +323,18 @@ def draw_footer(labels, dark=False):
 
 def draw_moon(x, y, color=GOLD):
 	pygame.draw.circle(screen, color, (x, y), 11)
-	pygame.draw.circle(screen, PANEL, (x + 5, y - 4), 10)
-	pygame.draw.circle(screen, PINK, (x + 15, y - 10), 2)
-	pygame.draw.circle(screen, LILAC, (x - 14, y - 9), 2)
+	pygame.draw.circle(screen, ICON_BG, (x + 5, y - 4), 10)
+	pygame.draw.circle(screen, CORAL, (x + 15, y - 10), 2)
+	pygame.draw.circle(screen, MINT, (x - 14, y - 9), 2)
 
 
 def draw_card_back(rect, selected=False, dark=False, rotation=0):
 	x, y, w, h = rect
 	card = pygame.Surface((w, h), pygame.SRCALPHA)
 	base = MYSTIC_PANEL if dark else PANEL
-	inner = MYSTIC_INNER if dark else (250, 229, 238)
-	border = MYSTIC_GOLD if dark and selected else MYSTIC_LINE if dark else PINK if selected else LINE
-	accent = MYSTIC_GOLD if dark else PINK_DARK
+	inner = MYSTIC_INNER if dark else LINE
+	border = MYSTIC_GOLD if dark and selected else MYSTIC_LINE if dark else GOLD if selected else LINE
+	accent = MYSTIC_GOLD if dark else GOLD
 	pygame.draw.rect(card, base, (0, 0, w, h), border_radius=6)
 	pygame.draw.rect(card, border, (0, 0, w, h), 2 if selected else 1, border_radius=6)
 	pygame.draw.rect(card, inner, (4, 4, w - 8, h - 8), 1, border_radius=4)
@@ -340,14 +350,14 @@ def draw_card_back(rect, selected=False, dark=False, rotation=0):
 def draw_tarot_face(rect, card, dark=False):
 	x, y, w, h = rect
 	base = MYSTIC_PANEL if dark else PANEL
-	inner = MYSTIC_INNER if dark else (255, 241, 238)
+	inner = MYSTIC_INNER if dark else PANEL_INNER
 	border = MYSTIC_GOLD if dark else GOLD
 	ink = MYSTIC_TEXT if dark else INK
-	accent = MYSTIC_GOLD if dark else PINK
+	accent = MYSTIC_GOLD if dark else GOLD
 	rounded(rect, base, 8, 2, border)
 	rounded((x + 5, y + 5, w - 10, h - 10), inner, 5, 1, border if dark else LINE)
 	cx, cy = x + w // 2, y + int(h * 0.40)
-	pygame.draw.circle(screen, (48, 38, 63) if dark else (255, 251, 242), (cx, cy), max(12, min(w, h) // 4))
+	pygame.draw.circle(screen, (48, 38, 63) if dark else ICON_BG, (cx, cy), max(12, min(w, h) // 4))
 	pygame.draw.circle(screen, accent, (cx, cy), max(11, min(w, h) // 4), 1)
 	if dark:
 		pygame.draw.circle(screen, MYSTIC_GOLD, (cx, cy), max(5, min(w, h) // 9), 1)
@@ -356,11 +366,11 @@ def draw_tarot_face(rect, card, dark=False):
 		pygame.draw.circle(screen, MYSTIC_GOLD, (cx + 14, cy + 13), 2)
 	else:
 		heart_radius = max(4, min(w, h) // 11)
-		pygame.draw.circle(screen, PINK, (cx - heart_radius, cy - heart_radius // 2), heart_radius)
-		pygame.draw.circle(screen, PINK, (cx + heart_radius, cy - heart_radius // 2), heart_radius)
-		pygame.draw.polygon(screen, PINK, ((cx - heart_radius * 2, cy),
+		pygame.draw.circle(screen, CORAL, (cx - heart_radius, cy - heart_radius // 2), heart_radius)
+		pygame.draw.circle(screen, CORAL, (cx + heart_radius, cy - heart_radius // 2), heart_radius)
+		pygame.draw.polygon(screen, CORAL, ((cx - heart_radius * 2, cy),
 										 (cx + heart_radius * 2, cy), (cx, cy + heart_radius * 2)))
-		pygame.draw.circle(screen, LILAC, (cx - 14, cy + 14), 3)
+		pygame.draw.circle(screen, GOLD, (cx - 14, cy + 14), 3)
 		pygame.draw.circle(screen, MINT, (cx + 15, cy + 14), 3)
 	label = font_small.render(card[0], True, ink)
 	screen.blit(label, (cx - label.get_width() // 2, y + h - 25))
@@ -372,11 +382,11 @@ def draw_home(selected):
 		tile_h, gap, top = 48, 6, 58
 		for index, (name, hint) in enumerate(zip(MODES, MODE_HINTS)):
 			y = top + index * (tile_h + gap)
-			color = (255, 236, 243) if index == selected else PANEL
+			color = PANEL_SELECTED if index == selected else PANEL
 			rounded((10, y, WIDTH - 20, tile_h), color, 10, 2 if index == selected else 1,
-					PINK if index == selected else LINE)
-			pygame.draw.circle(screen, (255, 222, 234), (34, y + tile_h // 2), 14)
-			pygame.draw.circle(screen, PINK_DARK, (34, y + tile_h // 2), 4)
+					GOLD if index == selected else LINE)
+			pygame.draw.circle(screen, ICON_BG, (34, y + tile_h // 2), 14)
+			pygame.draw.circle(screen, GOLD, (34, y + tile_h // 2), 4)
 			screen.blit(font_heading.render(name, True, INK), (58, y + 3))
 			screen.blit(font_small.render(hint, True, MUTED), (58, y + 26))
 	else:
@@ -384,34 +394,34 @@ def draw_home(selected):
 		tile_w = (WIDTH - 28 - gap * 2) // 3
 		for index, (name, hint) in enumerate(zip(MODES, MODE_HINTS)):
 			x = 6 + index * (tile_w + gap)
-			color = (255, 236, 243) if index == selected else PANEL
+			color = PANEL_SELECTED if index == selected else PANEL
 			rounded((x, 65, tile_w, 122), color, 10, 2 if index == selected else 1,
-					PINK if index == selected else LINE)
-			pygame.draw.circle(screen, (255, 222, 234), (x + tile_w // 2, 94), 17)
+					GOLD if index == selected else LINE)
+			pygame.draw.circle(screen, ICON_BG, (x + tile_w // 2, 94), 17)
 			if index == 1:
 				draw_moon(x + tile_w // 2, 94, GOLD)
 			else:
-				pygame.draw.circle(screen, PINK_DARK, (x + tile_w // 2, 94), 5)
+				pygame.draw.circle(screen, GOLD, (x + tile_w // 2, 94), 5)
 				pygame.draw.circle(screen, GOLD, (x + tile_w // 2, 94), 10, 1)
 			label = font_heading.render(name, True, INK)
 			screen.blit(label, (x + (tile_w - label.get_width()) // 2, 121))
 			for line_index, line in enumerate(wrap_lines(hint, font_small, tile_w - 8)[:2]):
 				image = font_small.render(line, True, MUTED)
 				screen.blit(image, (x + (tile_w - image.get_width()) // 2, 147 + line_index * 14))
-	draw_footer(("K1 开始", "K2 上一项", "K3 下一项"))
+	draw_footer(("上一项", "下一项", "开始"))
 
 
 def card_scroll_position(start, direction, steps, elapsed, duration):
 	progress = max(0.0, min(1.0, elapsed / duration))
-	return start + direction * steps * (1 - (1 - progress) ** 2)
+	return start + direction * steps * (1 - (1 - progress) ** 3)
 
 
 def draw_oracle_wheel(center, radius, angle, dark):
 	cx, cy = center
-	line = MYSTIC_LINE if dark else (230, 199, 157)
-	accent = MYSTIC_GOLD if dark else PINK_DARK
-	fill = MYSTIC_PANEL if dark else (255, 249, 246)
-	pygame.draw.circle(screen, (29, 23, 43) if dark else (255, 251, 247), center, radius + 5)
+	line = MYSTIC_LINE if dark else LINE
+	accent = MYSTIC_GOLD if dark else GOLD
+	fill = MYSTIC_PANEL if dark else PANEL
+	pygame.draw.circle(screen, (29, 23, 43) if dark else PANEL_INNER, center, radius + 5)
 	for ring in (radius, radius - 7, radius - 15):
 		pygame.draw.circle(screen, line, center, ring, 1)
 	for index in range(16):
@@ -439,11 +449,11 @@ def draw_oracle_wheel(center, radius, angle, dark):
 		return (round((layer_center + forward * direction_x - sideways * direction_y) * scale),
 				round((layer_center + forward * direction_y + sideways * direction_x) * scale))
 
-	shaft_edge = (145, 105, 110) if dark else (192, 93, 139)
-	shaft_color = (250, 219, 161) if dark else (255, 217, 199)
-	gem_color = (129, 92, 155) if dark else (220, 118, 161)
+	shaft_edge = (145, 105, 110) if dark else (140, 101, 48)
+	shaft_color = (250, 219, 161) if dark else GOLD
+	gem_color = (129, 92, 155) if dark else CORAL
 	highlight = (255, 246, 218)
-	halo = (171, 132, 207, 70) if dark else (243, 151, 185, 75)
+	halo = (171, 132, 207, 70) if dark else (244, 197, 108, 75)
 	for forward, sideways, size in ((radius * 0.15, -radius * 0.31, 2.5),
 									(-radius * 0.22, radius * 0.28, 1.5)):
 		star_x, star_y = point(forward, sideways)
@@ -509,12 +519,12 @@ def draw_shuffle(mode, elapsed, card, scroll_position, spin_duration, stop_posit
 
 	reveal_start = spin_duration + SPIN_SETTLE_SECONDS
 	revealing = elapsed >= reveal_start
-	lift_progress = min(1.0, max(0.0, (elapsed - reveal_start) / 0.82))
+	lift_progress = min(1.0, max(0.0, (elapsed - reveal_start) / CARD_REVEAL_SECONDS))
 	eased = 1 - (1 - lift_progress) ** 3
 	previous_clip = screen.get_clip()
 	screen.set_clip((0, 0, WIDTH, HEIGHT - 23))
 	if not revealing:
-		accent = MYSTIC_GOLD if dark else PINK_DARK
+		accent = MYSTIC_GOLD if dark else GOLD
 		pygame.draw.polygon(screen, accent, ((WIDTH // 2 - 4, row_top - 9),
 										 (WIDTH // 2 + 4, row_top - 9), (WIDTH // 2, row_top - 4)))
 	visible_radius = (WIDTH / 2 + card_w / 2) / spacing
@@ -545,7 +555,7 @@ def draw_shuffle(mode, elapsed, card, scroll_position, spin_duration, stop_posit
 		if lift_progress < 0.65:
 			draw_card_back(rect, True, dark)
 		elif lift_progress < 0.82:
-			edge_color = MYSTIC_GOLD if dark else PINK
+			edge_color = MYSTIC_GOLD if dark else GOLD
 			pygame.draw.line(screen, MYSTIC_LINE if dark else LINE,
 						 (center_x + 1, rect[1] + 5), (center_x + 1, rect[1] + moving_h - 5), 1)
 			pygame.draw.line(screen, edge_color, (center_x, rect[1] + 5),
@@ -554,16 +564,14 @@ def draw_shuffle(mode, elapsed, card, scroll_position, spin_duration, stop_posit
 			draw_tarot_face(rect, card, dark)
 
 	screen.set_clip(previous_clip)
-	labels = ("正在选牌", "K2 返回", "正在选牌") if not revealing else \
-		("正在揭牌", "K2 返回", "正在揭牌")
-	draw_footer(labels, dark)
+	draw_footer(("翻页", "再抽", "返回"), dark, (False, False, True))
 
 
 def draw_love_result(card, page):
 	draw_background()
-	pygame.draw.rect(screen, (255, 232, 241), (0, 0, WIDTH, 48))
+	pygame.draw.rect(screen, PANEL, (0, 0, WIDTH, 48))
 	centered("桃花情感指引", font_title, INK, 8)
-	centered("缘分 · 心动 · 相处", font_small, PINK_DARK, 33)
+	centered("缘分 · 心动 · 相处", font_small, GOLD, 33)
 	pygame.draw.line(screen, LINE, (8, 48), (WIDTH - 8, 48), 1)
 	if WIDTH >= 300:
 		rect = (12, 55, 74, 104)
@@ -572,28 +580,28 @@ def draw_love_result(card, page):
 		rect = (12, 54, 60, 84)
 		text_x, text_y, max_w = 12, 156, WIDTH - 24
 	draw_tarot_face(rect, card)
-	page_label = font_small.render("%d / %d" % (page + 1, LOVE_PAGE_COUNT), True, PINK_DARK)
+	page_label = font_small.render("%d / %d" % (page + 1, LOVE_PAGE_COUNT), True, GOLD)
 	if WIDTH >= 300:
-		screen.blit(font_heading.render(card[0] + " · " + card[1], True, PINK_DARK), (text_x, 59))
+		screen.blit(font_heading.render(card[0] + " · " + card[1], True, GOLD), (text_x, 59))
 		screen.blit(page_label, (WIDTH - 12 - page_label.get_width(), 64))
 		for label, font, color, y in (("合拍指数", font_small, MUTED, 161),
-								   (str(card[4]) + "%", font_heading, PINK_DARK, 174),
+								   (str(card[4]) + "%", font_heading, GOLD, 174),
 								   ("仅供趣味参考", font_small, MUTED, 201)):
 			image = font.render(label, True, color)
 			screen.blit(image, (rect[0] + (rect[2] - image.get_width()) // 2, y))
 		bar_x, bar_y, bar_width = rect[0] + 4, 195, rect[2] - 8
 	else:
-		screen.blit(font_heading.render(card[0], True, PINK_DARK), (84, 57))
+		screen.blit(font_heading.render(card[0], True, GOLD), (84, 57))
 		screen.blit(page_label, (WIDTH - 12 - page_label.get_width(), 62))
 		screen.blit(font_small.render("关键词：" + card[1], True, MUTED), (84, 80))
 		screen.blit(font_small.render("合拍指数", True, MUTED), (84, 105))
-		score = font_heading.render(str(card[4]) + "%", True, PINK_DARK)
+		score = font_heading.render(str(card[4]) + "%", True, GOLD)
 		screen.blit(score, (WIDTH - 12 - score.get_width(), 99))
 		screen.blit(font_small.render("仅供趣味参考", True, MUTED), (84, 128))
 		bar_x, bar_y, bar_width = 84, 120, WIDTH - 96
 		pygame.draw.line(screen, LINE, (12, 147), (WIDTH - 12, 147), 1)
-	rounded((bar_x, bar_y, bar_width, 5), (245, 215, 225), 2)
-	rounded((bar_x, bar_y, max(2, bar_width * card[4] // 100), 5), PINK, 2)
+	rounded((bar_x, bar_y, bar_width, 5), PANEL_SELECTED, 2)
+	rounded((bar_x, bar_y, max(2, bar_width * card[4] // 100), 5), CORAL, 2)
 	sections = card[3].split("\n")
 	start = page * LOVE_SECTIONS_PER_PAGE
 	for paragraph in sections[start:start + LOVE_SECTIONS_PER_PAGE]:
@@ -601,9 +609,9 @@ def draw_love_result(card, page):
 		text_y = draw_wrapped(paragraph, text_x, text_y, max_w - font_body.size("。")[0],
 							  font_body, INK, 2)
 		label = paragraph.split("：", 1)[0] + "："
-		screen.blit(font_body.render(label, True, PINK_DARK), (text_x, section_y))
+		screen.blit(font_body.render(label, True, GOLD), (text_x, section_y))
 		text_y += 4
-	draw_footer(("K1 再抽", "K2 返回", "K3 下一页" if page == 0 else "K3 上一页"))
+	draw_footer(("下一页" if page == 0 else "上一页", "再抽", "返回"))
 
 
 def draw_result(mode, card, page=0):
@@ -630,7 +638,7 @@ def draw_result(mode, card, page=0):
 		text_y = draw_wrapped(paragraph, text_x, text_y, max_w - font_body.size("。")[0],
 							  font_body, MYSTIC_TEXT, 2)
 		text_y += 2
-	draw_footer(("K1 再抽", "K2 返回", "K3 再抽"), True)
+	draw_footer(("翻页", "再抽", "返回"), True, (False, True, True))
 
 
 def zodiac_pages(index, topic):
@@ -661,16 +669,16 @@ def draw_zodiac(index, topic, page):
 	pages = zodiac_pages(index, topic)
 	draw_header("星座小档案", "太阳星座 · 仅供趣味")
 	rounded((9, 52, WIDTH - 18, HEIGHT - 80), PANEL, 8, 1, LINE)
-	screen.blit(font_title.render(sign[0], True, PINK_DARK), (18, 56))
+	screen.blit(font_title.render(sign[0], True, GOLD), (18, 56))
 	date = font_small.render("约 " + sign[1], True, MUTED)
 	screen.blit(date, (WIDTH - date.get_width() - 18, 62))
 	topic_w = (WIDTH - 44) // len(TOPICS)
 	for i, label in enumerate(TOPICS):
 		x = 17 + i * (topic_w + 3)
 		active = i == topic
-		rounded((x, 82, topic_w, 21), (255, 232, 240) if active else (250, 246, 247),
-				7, 1 if active else 0, PINK if active else None)
-		image = font_small.render(label, True, PINK_DARK if active else MUTED)
+		rounded((x, 82, topic_w, 21), PANEL_SELECTED if active else PANEL_INNER,
+				7, 1 if active else 0, GOLD if active else None)
+		image = font_small.render(label, True, GOLD if active else MUTED)
 		screen.blit(image, (x + (topic_w - image.get_width()) // 2, 86))
 	heading = ("性格特点", "感情相处", "工作学习", "人际关系", "你的天赋")[topic]
 	screen.blit(font_heading.render(heading, True, INK), (18, 108))
@@ -678,10 +686,10 @@ def draw_zodiac(index, topic, page):
 	screen.blit(page_label, (WIDTH - 18 - page_label.get_width(), 113))
 	text_y = 131
 	for line in pages[page]:
-		color = PINK_DARK if line.startswith(("合拍：", "需磨合：")) else INK
+		color = GOLD if line.startswith(("合拍：", "需磨合：")) else INK
 		screen.blit(font_body.render(line, True, color), (18, text_y))
 		text_y += font_body.get_linesize() + 2
-	draw_footer(("K1 下一页" if page + 1 < len(pages) else "K1 换主题", "K2 下星座", "K3 返回"))
+	draw_footer(("下一页" if page + 1 < len(pages) else "换主题", "下星座", "返回"))
 
 
 def render(state):
@@ -696,16 +704,16 @@ def render(state):
 		draw_result(state["mode"], state["card"], state.get("love_page", 0))
 	elif view == "zodiac":
 		draw_zodiac(state["sign"], state["topic"], state.get("zodiac_page", 0))
-	return spi_lcd.present()
+	return spi_lcd.present(poll_events=False)
 
 
 def start_draw(state, mode):
 	cards = DAILY_CARDS if mode == "daily" else TAROT
 	card_count = len(cards)
 	selected = random.randrange(card_count)
-	pointer = random.randrange(card_count)
 	direction = random.choice((-1, 1))
-	steps = card_count + ((selected - pointer) * direction) % card_count
+	steps = random.randint(12, 16)
+	pointer = (selected - direction * steps) % card_count
 	state.update({"view": "shuffle", "mode": mode, "pointer": pointer,
 				  "elapsed": 0.0, "spin_duration": SPIN_DURATION, "selected": selected,
 				  "scroll_start": pointer, "scroll_direction": direction,
@@ -717,11 +725,11 @@ def handle_action(action, state):
 	if action == "BACK":
 		state["view"] = "home"
 	elif state["view"] == "home":
-		if action == "K2":
+		if action == "K1":
 			state["menu"] = (state["menu"] - 1) % len(MODES)
-		elif action == "K3":
+		elif action == "K2":
 			state["menu"] = (state["menu"] + 1) % len(MODES)
-		elif action == "K1":
+		elif action == "K3":
 			if state["menu"] == 1:
 				state.update({"view": "zodiac", "sign": 0, "topic": 0, "zodiac_page": 0})
 			else:
@@ -741,30 +749,35 @@ def handle_action(action, state):
 		elif action == "K3":
 			state["view"] = "home"
 	elif state["view"] == "result":
-		if action == "K2":
+		if action == "K3":
 			state["view"] = "home"
-		elif action == "K3" and state["mode"] == "love":
+		elif action == "K1" and state["mode"] == "love":
 			state["love_page"] = (state.get("love_page", 0) + 1) % LOVE_PAGE_COUNT
-		elif action in ("K1", "K3"):
+		elif action == "K2":
 			start_draw(state, state["mode"])
-	elif state["view"] == "shuffle" and action == "K2":
+	elif state["view"] == "shuffle" and action == "K3":
 		state["view"] = "home"
 
 
 BUTTONS = {"K1": 18, "K2": 23, "K3": 24}
 gpio = None
-try:
-	import RPi.GPIO as GPIO  # type: ignore[import-not-found]
-
-	GPIO.setmode(GPIO.BCM)
-	for pin in BUTTONS.values():
-		GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-	gpio = GPIO
-except Exception as error:
-	print("GPIO 不可用（%s），使用键盘模拟：1/2/3=K1/K2/K3，Backspace=返回。" % error)
-
 button_state = {name: {"down": False, "since": 0.0, "long": False} for name in BUTTONS}
 LONG_PRESS_SECONDS = 0.8
+
+
+def setup_gpio():
+	global gpio
+	if spi_lcd.is_simulate():
+		return
+	try:
+		import RPi.GPIO as GPIO  # type: ignore[import-not-found]
+
+		GPIO.setmode(GPIO.BCM)
+		for pin in BUTTONS.values():
+			GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+		gpio = GPIO
+	except Exception as error:
+		print("GPIO 不可用（%s），使用键盘模拟：1/2/3=K1/K2/K3，Backspace=返回。" % error)
 
 
 def poll_gpio():
@@ -775,14 +788,14 @@ def poll_gpio():
 		current = button_state[name]
 		if pressed and not current["down"]:
 			current.update({"down": True, "since": now, "long": False})
-			if name != "K1":
+			if name != "K3":
 				actions.append(name)
-		elif pressed and name == "K1" and not current["long"] and now - current["since"] >= LONG_PRESS_SECONDS:
+		elif pressed and name == "K3" and not current["long"] and now - current["since"] >= LONG_PRESS_SECONDS:
 			current["long"] = True
 			actions.append("BACK")
 		elif not pressed and current["down"]:
-			if name == "K1" and not current["long"]:
-				actions.append("K1")
+			if name == "K3" and not current["long"]:
+				actions.append("K3")
 			current["down"] = False
 	return actions
 
@@ -803,55 +816,65 @@ def mouse_button_at(window_position):
 	return None
 
 
-state = {"view": "home", "menu": 0, "sign": 0, "topic": 0,
-		 "mode": "daily", "pointer": 0, "elapsed": 0.0, "spin_duration": SPIN_DURATION,
-		 "scroll_start": 0, "scroll_direction": 1, "scroll_steps": len(DAILY_CARDS),
-		 "scroll_position": 0.0,
-		 "selected": 0, "card": DAILY_CARDS[0], "card_count": len(DAILY_CARDS), "love_page": 0}
-clock = pygame.time.Clock()
-running = True
-print("星愿占卜屋已启动。K1 确认，K2/K3 选择；长按 K1 返回菜单。")
+def event_action(event):
+	if event.type == pygame.QUIT:
+		return "QUIT"
+	if event.type == pygame.KEYDOWN:
+		if event.key in (pygame.K_ESCAPE, pygame.K_q):
+			return "QUIT"
+		if event.key in (pygame.K_BACKSPACE, pygame.K_0):
+			return "BACK"
+		return {pygame.K_1: "K1", pygame.K_2: "K2", pygame.K_3: "K3",
+				pygame.K_KP1: "K1", pygame.K_KP2: "K2", pygame.K_KP3: "K3"}.get(event.key)
+	if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+		return mouse_button_at(event.pos)
+	return None
 
-try:
-	while running:
-		dt = clock.tick(30) / 1000.0
-		actions = []
-		if gpio is None:
-			for event in pygame.event.get():
-				if event.type == pygame.QUIT:
+
+def main():
+	setup_gpio()
+	state = {"view": "home", "menu": 0, "sign": 0, "topic": 0,
+			 "mode": "daily", "pointer": 0, "elapsed": 0.0, "spin_duration": SPIN_DURATION,
+			 "scroll_start": 0, "scroll_direction": 1, "scroll_steps": len(DAILY_CARDS),
+			 "scroll_position": 0.0,
+			 "selected": 0, "card": DAILY_CARDS[0], "card_count": len(DAILY_CARDS), "love_page": 0}
+	hold = spi_lcd.SimulatedHold("K3", "BACK", LONG_PRESS_SECONDS)
+	clock = pygame.time.Clock()
+	running = True
+	print("星愿占卜屋已启动。K1/K2 选择，K3 确认或返回；长按 K3 返回菜单。")
+
+	try:
+		while running:
+			dt = clock.tick(FRAME_RATE) / 1000.0
+			if gpio is None:
+				actions = [hold.process_event(event, event_action(event)) for event in pygame.event.get()]
+				actions.append(hold.poll())
+			else:
+				actions = poll_gpio()
+
+			for action in actions:
+				if action == "QUIT" or (action == "BACK" and state["view"] == "home"):
 					running = False
-				elif event.type == pygame.KEYDOWN:
-					if event.key in (pygame.K_ESCAPE, pygame.K_q):
-						running = False
-					elif event.key in (pygame.K_BACKSPACE, pygame.K_0):
-						actions.append("BACK")
-					elif event.key == pygame.K_1:
-						actions.append("K1")
-					elif event.key == pygame.K_2:
-						actions.append("K2")
-					elif event.key == pygame.K_3:
-						actions.append("K3")
-				elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-					name = mouse_button_at(event.pos)
-					if name:
-						actions.append(name)
-		else:
-			actions = poll_gpio()
+					break
+				handle_action(action, state)
 
-		for action in actions:
-			handle_action(action, state)
+			if state["view"] == "shuffle":
+				state["elapsed"] += dt
+				state["scroll_position"] = card_scroll_position(
+					state["scroll_start"], state["scroll_direction"], state["scroll_steps"],
+					state["elapsed"], state["spin_duration"])
+				state["pointer"] = math.floor(state["scroll_position"] + 0.5) % state["card_count"]
+				if state["elapsed"] >= (state["spin_duration"] + SPIN_SETTLE_SECONDS +
+									CARD_REVEAL_SECONDS + CARD_REVEAL_HOLD_SECONDS):
+					state["view"] = "result"
 
-		if state["view"] == "shuffle":
-			state["elapsed"] += dt
-			state["scroll_position"] = card_scroll_position(
-				state["scroll_start"], state["scroll_direction"], state["scroll_steps"],
-				state["elapsed"], state["spin_duration"])
-			state["pointer"] = math.floor(state["scroll_position"] + 0.5) % state["card_count"]
-			if state["elapsed"] >= state["spin_duration"] + SPIN_SETTLE_SECONDS + 1.25:
-				state["view"] = "result"
+			if running:
+				running = render(state)
+	finally:
+		if gpio is not None:
+			gpio.cleanup()
+		pygame.quit()
 
-		running = render(state) and running
-finally:
-	if gpio is not None:
-		gpio.cleanup()
-	pygame.quit()
+
+if __name__ == "__main__":
+	main()

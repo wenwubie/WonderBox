@@ -1,11 +1,11 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "common"))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import spi_lcd
+from common import spi_lcd
 
-# 覆盖开关（不改则沿用 spi_lcd.py 顶部的 SIMULATE_DISPLAY / 自动检测）
+# 覆盖开关（不改则沿用 common/spi_lcd.py 顶部的 SIMULATE_DISPLAY / 自动检测）
 # spi_lcd.SIMULATE_DISPLAY = True   # 强制本机窗口
 # spi_lcd.SIMULATE_DISPLAY = False  # 强制树莓派 /dev/fb1
 

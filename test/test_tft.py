@@ -262,9 +262,9 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "common"))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import spi_lcd
+from common import spi_lcd
 
 screen = spi_lcd.init()
 import pygame  # noqa: E402
@@ -305,8 +305,8 @@ if spi_lcd.is_simulate():
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     mx, my = event.pos
-                    pixel_x = mx // spi_lcd.WINDOW_SCALE
-                    pixel_y = my // spi_lcd.WINDOW_SCALE
+                    pixel_x = mx // spi_lcd.WINDOW_ACTUAL_SCALE
+                    pixel_y = my // spi_lcd.WINDOW_ACTUAL_SCALE
                     if not draw_dot(pixel_x, pixel_y, "鼠标 -> "):
                         running = False
             pygame.time.wait(16)

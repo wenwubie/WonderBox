@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "owners": [
+    {
+      "id": "5301b9f7baab485f8532c87fc98d677e",
+      "name": "文武",
+      "pets": [
+        {
+          "id": "86ec58c0332848e28ae0cd98cb210256",
+          "species": "pikachu",
+          "name": "皮卡丘",
+          "stats": {
+            "hunger": 90.6018493334452,
+            "happiness": 99.99761651701398,
+            "hygiene": 83.72725276801322,
+            "energy": 77.72725276801322,
+            "health": 100.0
+          },
+          "sleeping": false,
+          "experience": 8,
+          "friendship": 18.0,
+          "stars": 2,
+          "food": 4,
+          "dirt": 0,
+          "cooldowns": {
+            "feed": 1794809716.5336852,
+            "play": 1794812890.0242157
+          },
+          "task_days": {
+            "feed": "2026-11-16"
+          },
+          "last_pat_at": 1794808503.3694675,
+          "activity": {
+            "kind": "explore",
+            "started_at": 1794812594.314485,
+            "ends_at": 1794813194.314485,
+            "dirty": true
+          },
+          "accessories": [
+            "none"
+          ],
+          "equipped": "none",
+          "updated_at": 1794812594.314485
+        }
+      ]
+    }
+  ]
+}

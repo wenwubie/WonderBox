@@ -1,4 +1,7 @@
 {
  "order": "正序",
- "style": "夜空"
+ "style": "夜空",
+ "generations": [
+  4
+ ]
 }

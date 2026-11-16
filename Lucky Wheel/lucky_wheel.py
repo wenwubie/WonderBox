@@ -20,36 +20,108 @@ GAMES = (
 		"轮流拍出节奏，其他人跟着拍。",
 		"大家先轻拍两下，再一起拍三下。",
 		"每人加一个拍手动作，连起来试一试。",
+		"拍一下、停一下，再拍两下。",
+		"用手指轻点四下，大家一起跟着点。",
+		"轮流轻拍膝盖，接成一段节奏。",
+		"用手指点出三下长短不同的节奏。",
+		"一人数到三，大家一起拍一下手。",
+		"拍两下手，再轻轻点一下脚尖。",
+		"轮流说一个词，把它拍成节奏。",
+		"一人拍慢一点，大家跟着慢慢拍。",
+		"拍一下手，再左右各挥一次手。",
+		"大家轻拍三下，最后安静一秒。",
+		"一人拍两下，下一人接着拍三下。",
+		"用手指轻点手心，模仿下雨的声音。",
 	)),
 	("动作", (248, 132, 119), (
 		"一人做个小动作，大家像照镜子一样跟着做。",
 		"轮流摆个有趣的姿势，大家一起模仿。",
 		"用手画一个大圆，再画一个小圆。",
 		"跟着领头的人慢慢伸展，换人再试。",
+		"用手臂做翅膀，原地轻轻飞一飞。",
+		"用手指画一颗星，再画一颗心。",
+		"做一个开心表情，让大家猜一猜。",
+		"慢慢抬起双手，像花儿一样打开。",
+		"用双手做个望远镜，看看四周。",
+		"伸出一只手，假装接住一片雪花。",
+		"用动作表示刷牙，大家猜猜是什么。",
+		"假装抱起一个大西瓜，再轻轻放下。",
+		"和伙伴一起做一个相同的手势。",
+		"用手指比一只小鸟，轻轻飞一飞。",
+		"学一学小树随风摇摆的样子。",
+		"双肩轻轻画个圈，再换个方向。",
 	)),
 	("故事", (181, 152, 218), (
 		"每人接一句话，一起编一个开心的故事。",
 		"想一个神奇的地方，轮流说说那里有什么。",
 		"轮流说一个词，把它们编成有趣的一句话。",
 		"选一个小主角，大家接力讲一次冒险。",
+		"故事从一个会说话的盒子开始。",
+		"想一想，小主角今天发现了什么？",
+		"给故事加一位新朋友，说说它是谁。",
+		"轮流说一句，编一场雨后的旅行。",
+		"想一个小难题，大家一起编解决办法。",
+		"说一个声音，把它加进故事里。",
+		"给故事选一个季节，再说说天气。",
+		"编一个温暖的结尾，送给故事主角。",
+		"想象一封神秘来信，猜猜里面写了什么。",
+		"选一样日用品，让它成为故事主角。",
+		"轮流说一个地点，编成一条旅行路线。",
+		"大家给故事取一个有趣的名字。",
 	)),
 	("寻找", (103, 189, 199), (
 		"用眼睛找一找，有什么红色的东西？",
 		"找一个圆圆的东西，告诉大家它在哪里。",
 		"看一看，找出一样让你觉得漂亮的东西。",
 		"找一个喜欢的颜色，大家说说看到了什么。",
+		"找一找，有什么蓝色的东西？",
+		"看看周围，有什么是方方的？",
+		"找一个柔软的东西，告诉大家是什么。",
+		"找一找，有什么东西上面有数字？",
+		"看一看，哪里有一条长长的线？",
+		"找一个小小的东西，用手指给大家看。",
+		"找出两样颜色一样的东西。",
+		"找一个有图案的东西，说说图案是什么。",
+		"看看周围，有什么东西可以打开？",
+		"找一个你觉得像星星的形状。",
+		"说一种颜色，大家一起用眼睛找一找。",
+		"找一找，有什么东西比手掌还小？",
 	)),
 	("想象", (141, 197, 138), (
 		"想象一辆神奇的车，轮流说说它有什么本领。",
 		"假装在画画，大家猜猜画的是什么。",
 		"想象一顶魔法帽，轮流说说它能做什么。",
 		"大家一起想一个新游戏，给它起个名字。",
+		"想象一双会飞的鞋，你想去哪里？",
+		"如果能和云朵聊天，你会说什么？",
+		"设计一种新水果，说说它的味道。",
+		"想象一座糖果城，里面有什么？",
+		"给自己发明一个有趣的小超能力。",
+		"想象一把神奇雨伞，它能做什么？",
+		"如果小树会说话，它会说什么？",
+		"设计一艘小船，说说它要去哪里。",
+		"想象一个彩色星球，说说它的样子。",
+		"给一朵花起名字，想想它会唱什么。",
+		"假装收到一份神秘礼物，猜猜是什么。",
+		"想一个会动的房子，说说它去哪儿。",
 	)),
 	("友爱", (246, 155, 181), (
 		"和身边的人挥挥手，一起说声你好。",
 		"轮流说一句让人开心的话，也可以笑一笑。",
 		"告诉大家一件今天开心的小事。",
 		"一起用手比一个心，送给在场的伙伴。",
+		"对伙伴说一句谢谢，也可以点点头。",
+		"轮流说说，喜欢和大家一起玩什么。",
+		"说一个欣赏伙伴的地方。",
+		"一起给今天的游戏起个队名。",
+		"做一个友好的手势，大家一起学。",
+		"轮流说一件愿意和伙伴分享的事。",
+		"一起为自己和伙伴鼓鼓掌。",
+		"问问伙伴喜欢什么颜色，听听回答。",
+		"说一句鼓励的话，送给在场的伙伴。",
+		"一起商量下次想玩的小游戏。",
+		"对大家微笑，或者轻轻挥挥手。",
+		"说说今天最喜欢的游戏环节。",
 	)),
 )
 
@@ -70,18 +142,18 @@ class LuckyWheel:
 		self.task = None
 
 	def handle_action(self, action):
-		if action == "K1" and self.phase in ("ready", "result"):
+		if action == "K3" and self.phase in ("ready", "result"):
 			self.speed = self.rng.uniform(240.0, 300.0)
 			self.phase = "spinning"
 			self.selected = None
 			self.task = None
-		elif action == "K2" and self.phase == "spinning":
+		elif action == "K3" and self.phase == "spinning":
 			self.phase = "slowing"
 			self.stop_angle = self.angle
 			self.stop_speed = self.speed
 			self.stop_elapsed = 0.0
 			self.stop_duration = self.rng.uniform(2.8, 4.0)
-		elif action == "K3" and self.phase == "result":
+		elif action == "K1" and self.phase == "result":
 			task_count = len(GAMES[self.selected][2])
 			next_task = self.rng.randrange(task_count - 1)
 			self.task = next_task + (next_task >= self.task)
@@ -259,12 +331,18 @@ class WheelDisplay:
 			text_y += self.body_font.get_linesize() + 1
 
 	def draw_buttons(self, wheel):
-		labels = ("K1 再转" if wheel.phase == "result" else "K1 开始", "K2 停下", "K3 换题")
-		enabled = (wheel.phase in ("ready", "result"), wheel.phase == "spinning", wheel.phase == "result")
+		if wheel.phase == "result":
+			labels, enabled = ("换题", "无功能", "再转"), (True, False, True)
+		elif wheel.phase == "ready":
+			labels, enabled = ("换题", "无功能", "开始"), (False, False, True)
+		elif wheel.phase == "spinning":
+			labels, enabled = ("换题", "无功能", "停下"), (False, False, True)
+		else:
+			labels, enabled = ("换题", "无功能", "停下"), (False, False, False)
 		colors = ((248, 169, 138), (124, 202, 190), (255, 211, 117))
 		for index, rect in enumerate(self.buttons):
 			color = colors[index] if enabled[index] else (229, 235, 230)
-			text_color = INK if enabled[index] else (153, 166, 157)
+			text_color = INK if enabled[index] else (83, 92, 89)
 			pygame.draw.rect(self.screen, color, rect, border_radius=5)
 			image = self.button_font.render(labels[index], True, text_color)
 			self.screen.blit(image, image.get_rect(center=rect.center))
@@ -374,14 +452,17 @@ def main():
 			pygame.display.set_caption("幸运转盘")
 		display = WheelDisplay(screen)
 		wheel = LuckyWheel()
+		hold = spi_lcd.SimulatedHold("K3", "QUIT", QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
 		exit_hint = "按 Esc 退出" if buttons is None else "长按 K3 退出"
-		print("幸运转盘已启动：K1 开始，K2 停下，K3 换题；%s。" % exit_hint)
+		print("幸运转盘已启动：K3 开始和停下，K1 换题；%s。" % exit_hint)
 		while running:
 			elapsed = clock.tick(30) / 1000.0
 			if buttons is None:
-				actions = [event_action(event, display) for event in pygame.event.get()]
+				actions = [hold.process_event(event, event_action(event, display))
+						   for event in pygame.event.get()]
+				actions.append(hold.poll())
 			else:
 				actions = buttons.poll()
 			for action in actions:

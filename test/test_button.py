@@ -7,16 +7,16 @@
 
 按下任意按键后，SPI 屏上实时显示对应 "Kx 已按下"。
 
-本机调试（无树莓派）时会自动进入模拟模式：按键盘 1/2/3 代替 K1/K2/K3。
+本机调试（无树莓派）时会自动进入模拟模式：按键盘 1/2/3 或点击对应按键行代替 K1/K2/K3。
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "common"))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import spi_lcd
+from common import spi_lcd
 
-# 覆盖开关（不改则沿用 spi_lcd.py 顶部的 SIMULATE_DISPLAY / 自动检测）
+# 覆盖开关（不改则沿用 common/spi_lcd.py 顶部的 SIMULATE_DISPLAY / 自动检测）
 # spi_lcd.SIMULATE_DISPLAY = True   # 强制本机窗口
 # spi_lcd.SIMULATE_DISPLAY = False  # 强制树莓派 /dev/fb1
 
@@ -57,9 +57,9 @@ try:
     gpio = GPIO
     print("GPIO 初始化完成：" + ", ".join(f"{n}=GPIO{p}" for n, p in BUTTONS.items()))
 except ImportError:
-    print("⚠️ 未检测到 RPi.GPIO，进入键盘模拟模式：按 1/2/3 代替 K1/K2/K3，Esc 退出。")
+    print("⚠️ 未检测到 RPi.GPIO，进入模拟模式：按 1/2/3 或点击对应按键行，Esc 退出。")
 except Exception as e:
-    print(f"⚠️ GPIO 初始化失败（{e}），进入键盘模拟模式：按 1/2/3 代替 K1/K2/K3，Esc 退出。")
+    print(f"⚠️ GPIO 初始化失败（{e}），进入模拟模式：按 1/2/3 或点击对应按键行，Esc 退出。")
 
 
 def draw():
@@ -103,6 +103,13 @@ def read_keyboard_events(running):
             if event.key in key_map:
                 name = key_map[event.key]
                 pressed[name] = not pressed[name]
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            position = spi_lcd.mouse_position(event)
+            if position is not None:
+                y = position[1]
+                if 55 <= y < 55 + len(BUTTONS) * 55:
+                    name = tuple(BUTTONS)[(y - 55) // 55]
+                    pressed[name] = not pressed[name]
     return running
 
 

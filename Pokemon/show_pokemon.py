@@ -2,11 +2,11 @@
 """SPI 屏宝可梦图鉴浏览器（第四世代 / 白金版）。
 
 主界面入口: python pokemon.py  (菜单 / 浏览记录 / 设置, 推荐从主界面进入)
-本文件也可独立运行: python show_pokemon.py 直接浏览全部。
+本文件也可独立运行: python show_pokemon.py 浏览设置中选中的世代。
 
 布局: 320x240
     第 1 页(概览): 左边图片, 右边 编号/名称/属性/白金获得方式
-    第 2+ 页(招式): 全屏招式表, 行数自适应铺满到底部(无底部提示条)
+    第 2+ 页(招式): 招式表行数自适应, 模拟模式保留底部按键提示
     末页(克制): 本只宝可梦的属性克制关系(克制/被克制/抵抗/免疫)
 
 按键:
@@ -24,9 +24,9 @@ import sys
 import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(BASE_DIR), "common"))
+sys.path.insert(0, os.path.dirname(BASE_DIR))
 
-import spi_lcd
+from common import spi_lcd
 
 # ---------------------------------------------------------------------------
 # 数据路径(相对本脚本所在目录)
@@ -34,6 +34,7 @@ import spi_lcd
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "pokedex_data", "pokemon_platinum.json")
 IMG_DIR = os.path.join(BASE_DIR, "pokedex_data", "images")
+SETTINGS_FILE = os.path.join(BASE_DIR, "pokedex_data", "settings.json")
 
 FB_WIDTH = spi_lcd.FB_WIDTH
 FB_HEIGHT = spi_lcd.FB_HEIGHT
@@ -77,12 +78,12 @@ font_small = spi_lcd.load_font(14)  # 正文
 font_tiny = spi_lcd.load_font(13)   # 提示条
 
 # ---------------------------------------------------------------------------
-# 招式页布局: 表格直接铺到屏幕底部(招式页不画底部提示条),
+# 招式页布局: 真机表格铺到底部, 模拟模式为按键提示预留空间,
 # 自动挑选"能塞下最多行"的最大字号, 保证小屏也能一页显示尽量多的招式。
 # 小字屏(真机 wqy 字体偏高偏宽)会自动降到 12/11/10 号字。
 # ---------------------------------------------------------------------------
 MOVE_HEADER_Y = 30 if PORTRAIT else 26    # 表头起始 y
-MOVE_BOTTOM = FB_HEIGHT - 2               # 表格下边界(贴近屏幕底)
+MOVE_BOTTOM = FB_HEIGHT - (20 if spi_lcd.is_simulate() else 2)
 MOVE_TARGET_ROWS = 13                     # 期望每页行数(尽量填满)
 MOVE_FONT_SIZES = (13, 12, 11, 10)        # 依次尝试的字号
 
@@ -120,6 +121,35 @@ with open(DATA_FILE, encoding="utf-8") as f:
 if not POKEMONS:
     print("数据文件为空。")
     sys.exit(1)
+
+GENERATION_RANGES = {1: (1, 151), 2: (152, 251), 3: (252, 386), 4: (387, 493)}
+
+
+def normalize_generations(generations):
+    if not isinstance(generations, list):
+        return list(GENERATION_RANGES)
+    selected = sorted({generation for generation in generations
+                       if type(generation) is int and generation in GENERATION_RANGES})
+    return selected if selected or not generations else list(GENERATION_RANGES)
+
+
+def generation_pokemon(generations):
+    generations = normalize_generations(generations)
+    return [pokemon for pokemon in POKEMONS
+            if any(start <= pokemon["id"] <= end
+                   for generation, (start, end) in GENERATION_RANGES.items()
+                   if generation in generations)]
+
+
+def load_selected_generations():
+    try:
+        with open(SETTINGS_FILE, encoding="utf-8") as settings_file:
+            settings = json.load(settings_file)
+        generations = settings.get("generations") if isinstance(settings, dict) else None
+    except (OSError, ValueError):
+        generations = None
+    return normalize_generations(generations)
+
 
 # 属性相克表(由 crawl_pokemon_platinum.py 生成); 缺失时跳过克制页
 TYPE_CHART_FILE = os.path.join(BASE_DIR, "pokedex_data", "type_chart.json")
@@ -232,17 +262,18 @@ def draw_top_bar(p, page, pages):
     screen.blit(t2, (FB_WIDTH - t2.get_width() - 8, 4))
 
 
-BACK_HINT = False  # True=浏览页底部提示"长按K3返回"(由 pokemon.py 主界面进入时置位)
+_footer_button_rects = []
 
 
 def draw_bottom_bar():
+    global _footer_button_rects
     pygame.draw.rect(screen, BAR_COLOR, (0, FB_HEIGHT - 18, FB_WIDTH, 18))
-    if BACK_HINT:
-        text = "K1 翻页  K2 上一只  K3 下一只  长按K3 返回"
-    else:
-        text = "K1 下页   K2 上一只   K3 下一只"
+    buttons = (("K1", "翻页"), ("K2", "上一只"), ("K3", "下一只"))
+    text = "    ".join(label for _, label in buttons)
     t = font_tiny.render(text, True, SUB_COLOR)
-    screen.blit(t, ((FB_WIDTH - t.get_width()) // 2, FB_HEIGHT - 16))
+    y = FB_HEIGHT - 16
+    screen.blit(t, ((FB_WIDTH - t.get_width()) // 2, y))
+    _footer_button_rects = spi_lcd.text_button_rects(text, font_tiny, y, buttons)
 
 
 def fit_text(text, font, max_w):
@@ -433,7 +464,8 @@ def draw_moves(p, move_page):
         screen.blit(t, (FB_WIDTH // 2 - t.get_width() // 2, 100))
 
     draw_top_bar(p, 1 + move_page, total_pages(p))
-    # 招式页不画底部提示条, 表格直接铺到屏幕底部
+    if spi_lcd.is_simulate():
+        draw_bottom_bar()
 
 
 def draw_matchups(p):
@@ -482,7 +514,7 @@ def render(p, page):
         draw_matchups(p)
     else:
         draw_moves(p, page - 1)
-    return spi_lcd.present()
+    return spi_lcd.present(poll_events=False)
 
 
 # ---------------------------------------------------------------------------
@@ -593,15 +625,13 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8):
 
     独立运行(python show_pokemon.py)时, "back"/"quit" 都直接退出程序。
     """
-    global BACK_HINT
     mon_list = list(POKEMONS if mon_list is None else mon_list)
     if not mon_list:
         return "quit"
-    from_menu = on_viewed is not None
-    BACK_HINT = from_menu
 
     state = {"idx": 0, "page": 0}
     k3_t0 = [None]          # K3 按下时刻(自行处理 短按/长按)
+    mouse_k3_down = False
 
     def cur():
         return mon_list[state["idx"]]
@@ -632,6 +662,17 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8):
                         if name:
                             handle_event(name, state, mon_list)
                             running = redraw()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    name = spi_lcd.button_from_mouse(event, _footer_button_rects)
+                    if name == "K3":
+                        if k3_t0[0] is None:
+                            k3_t0[0] = now
+                        mouse_k3_down = True
+                    elif name:
+                        handle_event(name, state, mon_list)
+                        running = redraw()
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    mouse_k3_down = False
             clock.tick(30)
         else:
             # 真机: GPIO 轮询(K3 事件交由长按检测处理)
@@ -646,10 +687,11 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8):
 
         # K3 短按=下一只 / 长按=返回
         if k3_t0[0] is not None:
-            if _k3_down() and now - k3_t0[0] >= back_hold:
+            k3_down = mouse_k3_down or _k3_down()
+            if k3_down and now - k3_t0[0] >= back_hold:
                 wait_release("K3")     # 等 K3 松开再返回, 防止主界面误判为"确定"
                 return "back"
-            if not _k3_down():
+            if not k3_down:
                 handle_event("K3", state, mon_list)
                 running = redraw()
                 k3_t0[0] = None
@@ -671,10 +713,14 @@ def run_screenshots():
 
 
 def main():
-    """独立运行入口: 浏览全部宝可梦。"""
-    print("共 %d 只宝可梦。开始浏览..." % len(POKEMONS))
+    """独立运行入口: 浏览设置中选中的世代。"""
+    monsters = generation_pokemon(load_selected_generations())
+    print("共 %d 只宝可梦。模拟模式可点击底栏功能文字。" % len(monsters))
     try:
-        browse()
+        if monsters:
+            browse(monsters)
+        else:
+            print("没有选择宝可梦世代，请在主界面的设置中勾选。")
     except KeyboardInterrupt:
         print("\n退出图鉴浏览器。")
     finally:

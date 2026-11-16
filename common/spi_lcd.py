@@ -4,11 +4,12 @@ from __future__ import annotations
 import array
 import os
 import sys
+import time
 
 # =============================================================================
 # 显示目标开关（改这一处即可，test_show / test_tft 都会跟着变）
 #
-#   True  : 本机弹出 pygame 窗口，按 320x240 逻辑分辨率绘制（本地调试）
+#   True  : 本机弹出 pygame 窗口，按 240x320 或 320x240 逻辑分辨率绘制
 #   False : dummy 驱动 + 写入 /dev/fb1（树莓派 SPI 屏）
 #   None  : 自动。存在 /dev/fb1 用真机，否则本机窗口
 # =============================================================================
@@ -17,7 +18,8 @@ SIMULATE_DISPLAY = None
 FB_WIDTH = 320
 FB_HEIGHT = 240
 FB_DEV = "/dev/fb1"
-WINDOW_SCALE = 3  # 本机窗口放大倍数（物理屏很小，窗口按 960x720 看）
+WINDOW_SCALE = 2  # 本机窗口放大倍数；初始化时按可用桌面尺寸自动下调
+WINDOW_ACTUAL_SCALE = WINDOW_SCALE
 
 # =============================================================================
 # 显示校色（仅真机写 /dev/fb1 时生效，PC 模拟窗口不受影响）
@@ -105,12 +107,43 @@ def load_font(size: int = 24):
 
 
 def _want_portrait() -> bool:
-    """模拟模式强制竖屏(240x320): POKEMON_PORTRAIT=1 或 --portrait。
-    用于在 PC 上预览真机 rotate=0/180 后的竖屏布局。"""
+    """模拟模式默认竖屏(240x320)，POKEMON_PORTRAIT 或参数可覆盖。"""
     env = os.environ.get("POKEMON_PORTRAIT")
     if env is not None:
         return env.strip().lower() not in ("0", "false", "no", "landscape")
-    return "--portrait" in sys.argv
+    return "--landscape" not in sys.argv
+
+
+def _fit_window_scale(pygame, width: int, height: int) -> int:
+    """将模拟窗口限制在可用桌面内，并为窗口边框预留空间。"""
+    info = pygame.display.Info()
+    desktop_width, desktop_height = info.current_w, info.current_h
+    if desktop_width <= 0 or desktop_height <= 0:
+        return max(1, int(WINDOW_SCALE))
+
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            class Rect(ctypes.Structure):
+                _fields_ = [(name, ctypes.c_long) for name in ("left", "top", "right", "bottom")]
+
+            work_area = Rect()
+            if ctypes.windll.user32.SystemParametersInfoW(
+                0x0030, 0, ctypes.byref(work_area), 0
+            ):
+                desktop_width = work_area.right - work_area.left - 32
+                desktop_height = work_area.bottom - work_area.top - 48
+        except (AttributeError, OSError):
+            desktop_width -= 32
+            desktop_height -= 96
+    else:
+        desktop_width -= 32
+        desktop_height -= 96
+
+    if desktop_width <= 0 or desktop_height <= 0:
+        return 1
+    return max(1, min(int(WINDOW_SCALE), desktop_width // width, desktop_height // height))
 
 
 def _fb_size():
@@ -131,9 +164,9 @@ def init():
     """初始化画布。必须在 import pygame 之前、或至少在 pygame.init 之前调用。
 
     真机: 自动读取 fb1 实际分辨率(横竖屏自适应), FB_WIDTH/FB_HEIGHT 会随之更新。
-    模拟: 默认 320x240 横屏; 设 POKEMON_PORTRAIT=1 或加 --portrait 可模拟竖屏。
+    模拟: 默认 240x320 竖屏; 设 POKEMON_PORTRAIT=0 或加 --landscape 可模拟横屏。
     """
-    global _simulate, _screen, _window, _pygame, FB_WIDTH, FB_HEIGHT
+    global _simulate, _screen, _window, _pygame, FB_WIDTH, FB_HEIGHT, WINDOW_ACTUAL_SCALE
 
     _simulate = _want_simulate()
     os.environ.setdefault("PYGAME_DETECT_AVX2", "1")
@@ -156,10 +189,11 @@ def init():
             FB_WIDTH, FB_HEIGHT = 240, 320
         else:
             FB_WIDTH, FB_HEIGHT = 320, 240
-        pygame.display.set_caption("SPI LCD 模拟  %dx%d  x%d" % (FB_WIDTH, FB_HEIGHT, WINDOW_SCALE))
-        _window = pygame.display.set_mode((FB_WIDTH * WINDOW_SCALE, FB_HEIGHT * WINDOW_SCALE))
+        WINDOW_ACTUAL_SCALE = _fit_window_scale(pygame, FB_WIDTH, FB_HEIGHT)
+        pygame.display.set_caption("SPI LCD 模拟  %dx%d  x%d" % (FB_WIDTH, FB_HEIGHT, WINDOW_ACTUAL_SCALE))
+        _window = pygame.display.set_mode((FB_WIDTH * WINDOW_ACTUAL_SCALE, FB_HEIGHT * WINDOW_ACTUAL_SCALE))
         _screen = pygame.Surface((FB_WIDTH, FB_HEIGHT))
-        print("显示模式: 本机窗口模拟（%dx%d，窗口放大 %d 倍）" % (FB_WIDTH, FB_HEIGHT, WINDOW_SCALE))
+        print("显示模式: 本机窗口模拟（%dx%d，窗口放大 %d 倍）" % (FB_WIDTH, FB_HEIGHT, WINDOW_ACTUAL_SCALE))
         print("关闭窗口或按 Esc 退出。树莓派真机请把 spi_lcd.SIMULATE_DISPLAY 改为 False。")
     else:
         if not os.path.exists(FB_DEV):
@@ -183,8 +217,105 @@ def screen():
     return _screen
 
 
-def present() -> bool:
-    """把逻辑画布刷新到窗口或 /dev/fb1。返回 False 表示用户要退出。"""
+def mouse_position(event):
+    """将模拟窗口中的鼠标点击换算为逻辑屏幕坐标。"""
+    pygame = _pygame
+    if (not _simulate or pygame is None or event.type != pygame.MOUSEBUTTONDOWN
+            or event.button != 1):
+        return None
+    window = pygame.display.get_surface()
+    if window is None:
+        return None
+    x = event.pos[0] * FB_WIDTH / window.get_width()
+    y = event.pos[1] * FB_HEIGHT / window.get_height()
+    return int(x), int(y)
+
+
+def text_button_rects(text, font, y: int, labels=("K1", "K2", "K3")):
+    """返回可见文本标签对应的按键命中区域。"""
+    pygame = _pygame
+    if pygame is None:
+        return []
+    text_x = (FB_WIDTH - font.size(text)[0]) // 2
+    rects = []
+    for label in labels:
+        name, visible = (label, label) if isinstance(label, str) else label
+        if not visible:
+            continue
+        start = 0
+        while True:
+            index = text.find(visible, start)
+            if index < 0:
+                break
+            x = text_x + font.size(text[:index])[0]
+            width = font.size(visible)[0]
+            rects.append((name, pygame.Rect(x - 2, y - 2, width + 4, font.get_height() + 4)))
+            start = index + len(visible)
+    return rects
+
+
+def button_from_mouse(event, button_rects):
+    """按文本命中区域将模拟鼠标点击映射为 K1、K2 或 K3。"""
+    position = mouse_position(event)
+    if position is None:
+        return None
+    for name, rect in button_rects:
+        if rect.collidepoint(position):
+            return name
+    return None
+
+
+class SimulatedHold:
+    def __init__(self, short_action, long_action, seconds, clock=time.monotonic):
+        self.short_action = short_action
+        self.long_action = long_action
+        self.seconds = seconds
+        self.clock = clock
+        self.source = None
+        self.started = 0.0
+        self.long_sent = False
+
+    def process_event(self, event, action):
+        pygame = _pygame
+        if event.type == pygame.WINDOWFOCUSLOST:
+            self.source = None
+            return None
+        if event.type == pygame.KEYDOWN and action == self.short_action:
+            self.press(("key", event.key))
+            return None
+        if event.type == pygame.KEYUP:
+            return self.release(("key", event.key))
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and action == self.short_action:
+            self.press(("mouse", event.button))
+            return None
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            return self.release(("mouse", event.button))
+        return action
+
+    def press(self, source):
+        if self.source is None:
+            self.source = source
+            self.started = self.clock()
+            self.long_sent = False
+
+    def release(self, source):
+        if self.source != source:
+            return None
+        action = self.poll()
+        if action is None and not self.long_sent:
+            action = self.short_action
+        self.source = None
+        return action
+
+    def poll(self):
+        if self.source is not None and not self.long_sent and self.clock() - self.started >= self.seconds:
+            self.long_sent = True
+            return self.long_action
+        return None
+
+
+def present(poll_events: bool = True) -> bool:
+    """刷新画布；默认处理退出事件，自行处理输入时可关闭事件读取。"""
     pygame = _pygame
     if pygame is None or _screen is None:
         raise RuntimeError("请先调用 spi_lcd.init()")
@@ -192,7 +323,7 @@ def present() -> bool:
     if _simulate:
         pygame.transform.scale(_screen, _window.get_size(), _window)
         pygame.display.flip()
-        return pump()
+        return pump() if poll_events else True
 
     pygame.display.flip()
     _flush_fb()

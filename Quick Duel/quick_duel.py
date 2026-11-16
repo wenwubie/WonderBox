@@ -235,6 +235,11 @@ class DuelGame:
 				die.update(elapsed)
 
 
+class DuelGPIOButtons(GPIOButtons):
+	def poll(self):
+		return ["BACK" if action == "QUIT" else action for action in super().poll()]
+
+
 BACKGROUND = (237, 245, 249)
 PAPER = (255, 255, 255)
 INK = (35, 54, 68)
@@ -531,21 +536,20 @@ class DuelDisplay:
 	def draw_buttons(self, game):
 		if game.view == "dice":
 			labels = []
-			for index, die in enumerate(game.dice):
-				state = {"ready": "开始", "rolling": "停下", "locked": "锁定"}[die.phase]
-				labels.append("K%d %s" % (index + 1, state))
+			for die in game.dice:
+				labels.append({"ready": "开始", "rolling": "停下", "locked": "锁定"}[die.phase])
 			both_locked = all(die.phase == "locked" for die in game.dice)
 			tie = both_locked and game.dice[0].value == game.dice[1].value
-			labels.append("K3 重掷" if tie else "K3 挑战")
+			labels.append("重掷" if tie else "挑战")
 			enabled = (game.dice[0].phase != "locked", game.dice[1].phase != "locked", both_locked)
 		else:
 			wheel = game.wheel
-			labels = ("K1 再转" if wheel.phase == "result" else "K1 开始", "K2 停下", "K3 返回")
+			labels = ("再转" if wheel.phase == "result" else "开始", "停下", "返回")
 			enabled = (wheel.phase in ("ready", "result"), wheel.phase == "spinning", True)
 		colors = ((251, 184, 164), (160, 200, 239), GOLD)
 		for index, rect in enumerate(self.buttons):
 			color = colors[index] if enabled[index] else (221, 229, 231)
-			text_color = INK if enabled[index] else (147, 161, 166)
+			text_color = INK if enabled[index] else (83, 92, 89)
 			pygame.draw.rect(self.screen, color, rect, border_radius=5)
 			self.centered(labels[index], self.button_font, text_color, rect.center)
 
@@ -574,27 +578,34 @@ def main():
 		if not spi_lcd.is_simulate():
 			try:
 				gpio = importlib.import_module("RPi.GPIO")
-				buttons = GPIOButtons(gpio)
+				buttons = DuelGPIOButtons(gpio)
 			except Exception as error:
 				raise RuntimeError("GPIO 初始化失败，请检查 RPi.GPIO 和按键连接。") from error
 		else:
 			pygame.display.set_caption("骰子对决")
 		display = DuelDisplay(screen)
 		game = DuelGame()
+		hold = spi_lcd.SimulatedHold("K3", "BACK", wheel_support.QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
-		exit_hint = "按 Esc 退出" if buttons is None else "长按 K3 退出"
-		print("骰子对决已启动：K1、K2 控制各自的骰子，K3 进入挑战或开始下一轮；%s。" % exit_hint)
+		print("骰子对决已启动：K1、K2 控制各自的骰子，K3 进入挑战或开始下一轮；长按 K3 返回或退出。")
 		while running:
 			elapsed = clock.tick(30) / 1000.0
 			if buttons is None:
-				actions = [event_action(event, display) for event in pygame.event.get()]
+				actions = [hold.process_event(event, event_action(event, display))
+						   for event in pygame.event.get()]
+				actions.append(hold.poll())
 			else:
 				actions = buttons.poll()
 			for action in actions:
 				if action == "QUIT":
 					running = False
 					break
+				if action == "BACK":
+					if game.view != "wheel":
+						running = False
+						break
+					action = "K3"
 				game.handle_action(action)
 			if not running:
 				break

@@ -6,11 +6,11 @@
     python pokemon.py --screenshot  # 渲染各风格界面样例存 PNG 后退出
 
 主界面(选项居中, Q 版卡片):
-    全部(493)   浏览全部宝可梦
+    全部(n)     浏览所选世代的宝可梦
     未发现(n)   只看还没查看过的
     已发现(m)   只看已查看过的
-    设置        显示顺序(正序/倒序/随机) + 界面风格(夜空/糖果/森林/海洋)
-                + 重置发现(两次 K3 确认清空已发现记录)
+    设置        显示顺序 + 界面风格 + 第 1～4 世代筛选
+                + 重置发现(两次 K3 确认清空全部世代的发现记录)
                 底部一行: 左 取消 | 右 保存
 
 按键:
@@ -71,6 +71,7 @@ STYLES = {
 }
 STYLE_NAMES = list(STYLES)
 ORDER_NAMES = ["正序", "倒序", "随机"]
+GENERATION_RANGES = sp.GENERATION_RANGES
 
 K3_HOLD_BACK = 0.8  # 浏览页长按 K3 返回主界面的秒数
 
@@ -84,12 +85,15 @@ def load_settings():
             s = json.load(f)
     except Exception:
         s = {}
+    if not isinstance(s, dict):
+        s = {}
     s.setdefault("order", "正序")
     s.setdefault("style", "夜空")
     if s["order"] not in ORDER_NAMES:
         s["order"] = "正序"
     if s["style"] not in STYLES:
         s["style"] = "夜空"
+    s["generations"] = sp.normalize_generations(s.get("generations"))
     return s
 
 
@@ -114,14 +118,24 @@ def save_discovered(ids):
         json.dump({"ids": sorted(ids)}, f, ensure_ascii=False)
 
 
+def generation_pokemon(settings):
+    """返回所选世代的宝可梦；旧设置默认包含全部世代。"""
+    return sp.generation_pokemon(settings.get("generations"))
+
+
+def menu_counts(settings, discovered):
+    visible = generation_pokemon(settings)
+    found = sum(pokemon["id"] in discovered for pokemon in visible)
+    return len(visible), len(visible) - found, found
+
+
 def build_list(mode, settings, discovered):
-    """按模式过滤 + 按设置排序的浏览列表。mode: all / unseen / found"""
+    """按世代和发现状态过滤，并按设置排序。mode: all / unseen / found"""
+    lst = generation_pokemon(settings)
     if mode == "found":
-        lst = [p for p in sp.POKEMONS if p["id"] in discovered]
+        lst = [pokemon for pokemon in lst if pokemon["id"] in discovered]
     elif mode == "unseen":
-        lst = [p for p in sp.POKEMONS if p["id"] not in discovered]
-    else:
-        lst = list(sp.POKEMONS)
+        lst = [pokemon for pokemon in lst if pokemon["id"] not in discovered]
     order = settings.get("order", "正序")
     if order == "倒序":
         lst.reverse()
@@ -193,10 +207,17 @@ def draw_icon(kind, cx, cy, st):
         pygame.draw.circle(screen, st["accent"], (cx, cy), r // 2, 2)
 
 
-def draw_hint(st, text):
+def draw_hint(st, buttons):
+    global _hint_button_rects
     pygame.draw.rect(screen, st["hint_bg"], (0, FB_HEIGHT - 18, FB_WIDTH, 18))
+    text = "    ".join(label for _, label in buttons)
     t = sp.font_tiny.render(text, True, st["sub"])
-    screen.blit(t, ((FB_WIDTH - t.get_width()) // 2, FB_HEIGHT - 16))
+    y = FB_HEIGHT - 16
+    screen.blit(t, ((FB_WIDTH - t.get_width()) // 2, y))
+    _hint_button_rects = sp.spi_lcd.text_button_rects(text, sp.font_tiny, y, buttons)
+
+
+_hint_button_rects = []
 
 
 def draw_title(st, title, sub, y):
@@ -228,7 +249,7 @@ def draw_menu(settings, sel, counts, t):
     st = STYLES[settings["style"]]
     screen.fill(st["bg"])
     draw_deco(st, t)
-    draw_title(st, "宝可梦图鉴", "第四世代 · 白金版 · %d 只" % counts[0],
+    draw_title(st, "宝可梦图鉴", "白金版 · %d 只" % counts[0],
                20 if not PORTRAIT else 32)
 
     items = [
@@ -252,41 +273,45 @@ def draw_menu(settings, sel, counts, t):
         if count:
             c = sp.font_mid.render(count, True, st["accent"])
             screen.blit(c, (x0 + w - c.get_width() - 12, y + (h - c.get_height()) // 2))
-    draw_hint(st, "K1 上    K2 下    K3 确定")
+    draw_hint(st, (("K1", "上一项"), ("K2", "下一项"), ("K3", "确定")))
 
 
-def draw_settings_page(style_name, row, cur_order, t, confirm=False, found=0):
-    """设置页: 显示顺序 / 界面风格 / 重置发现 + 底部一行(左取消|右保存, 稍小)。
+def draw_settings_page(style_name, row, cur_order, t, confirm=False, found=0, generations=None):
+    """设置页: 显示顺序、界面风格、世代筛选和重置发现。
 
-    row: 0=显示顺序 1=界面风格 2=重置发现 3=取消 4=保存
+    row: 0=显示顺序 1=界面风格 2=世代筛选 3=重置发现 4=取消 5=保存
     confirm: 重置发现的二次确认状态
     found: 当前已发现数量(重置行右侧显示)
     """
     st = STYLES[style_name]
+    if generations is None:
+        generations = list(GENERATION_RANGES)
     screen.fill(st["bg"])
     draw_deco(st, t)
     draw_title(st, "设置", "保存后一直有效", 20 if not PORTRAIT else 32)
 
-    # ---- 三张设置卡(垂直居中于 标题 与 底部按钮行 之间) ----
     items = [
         ("显示顺序", cur_order, False),
         ("界面风格", style_name, False),
-        ("重置发现", "再按K3确认" if confirm else "已发现%d只" % found, confirm),
+        ("世代筛选", "/".join(str(generation) for generation in generations) or "未选择", False),
+        ("重置发现", "再按确认" if confirm else "全部%d只" % found, confirm),
     ]
     if PORTRAIT:
-        card_h, gap, top, bottom = 42, 12, 92, FB_HEIGHT - 64
+        card_h, gap, top, bottom = 32, 6, 92, FB_HEIGHT - 64
     else:
-        card_h, gap, top, bottom = 30, 8, 72, FB_HEIGHT - 52
+        card_h, gap, top, bottom = 24, 3, 68, FB_HEIGHT - 52
     card_w = min(240, FB_WIDTH - 12)
-    total = 3 * card_h + 2 * gap
+    total = len(items) * card_h + (len(items) - 1) * gap
     y0 = top + max(0, (bottom - top - total) // 2)
     x0 = (FB_WIDTH - card_w) // 2
+    click_rects = []
     for i, (label, value, warn) in enumerate(items):
         selected = i == row
         y = y0 + i * (card_h + gap)
         if selected:  # 选中项上下轻跳
             y += int(2 * math.sin(t * 5))
         rect = (x0, y, card_w, card_h)
+        click_rects.append(("ROW_%d" % i, pygame.Rect(rect)))
         fill = (150, 60, 60) if (selected and warn) else \
                st["panel_hi"] if selected else st["panel"]
         rrect(rect, 12, fill, border=st["accent"], bw=2 if selected else 0,
@@ -305,9 +330,10 @@ def draw_settings_page(style_name, row, cur_order, t, confirm=False, found=0):
         bh, bw_, by = 26, 92, FB_HEIGHT - 46
     gapx = 18
     bx = (FB_WIDTH - (2 * bw_ + gapx)) // 2
-    for i, (label, sel_row) in enumerate((("取 消", 3), ("保 存", 4))):
+    for i, (label, sel_row) in enumerate((("取 消", 4), ("保 存", 5))):
         selected = row == sel_row
         rect = (bx + i * (bw_ + gapx), by, bw_, bh)
+        click_rects.append(("ROW_%d" % sel_row, pygame.Rect(rect)))
         fill = (150, 60, 60) if (selected and i == 0) else \
                (60, 140, 90) if (selected and i == 1) else st["panel"]
         rrect(rect, 10, fill, border=st["accent"], bw=2 if selected else 0,
@@ -315,7 +341,49 @@ def draw_settings_page(style_name, row, cur_order, t, confirm=False, found=0):
         lab = sp.font_small.render(label, True, st["text"])
         screen.blit(lab, (rect[0] + (bw_ - lab.get_width()) // 2,
                           rect[1] + (bh - lab.get_height()) // 2))
-    draw_hint(st, "K1 上  K2 下  K3 切换/确定")
+    draw_hint(st, (("K1", "上一项"), ("K2", "下一项"),
+                   ("K3", "切换" if row < 2 else "确定")))
+    return click_rects
+
+
+def draw_generations_page(style_name, row, generations, t):
+    st = STYLES[style_name]
+    screen.fill(st["bg"])
+    draw_deco(st, t)
+    draw_title(st, "选择世代", "保存设置后生效", 32 if PORTRAIT else 20)
+
+    card_h, gap, top = (32, 6, 94) if PORTRAIT else (24, 4, 70)
+    card_w = min(240, FB_WIDTH - 12)
+    x0 = (FB_WIDTH - card_w) // 2
+    click_rects = []
+    for index, generation in enumerate(GENERATION_RANGES):
+        rect = pygame.Rect(x0, top + index * (card_h + gap), card_w, card_h)
+        selected = row == index
+        rrect(rect, 7, st["panel_hi"] if selected else st["panel"],
+              border=st["accent"], bw=2 if selected else 0)
+        checkbox = pygame.Rect(rect.x + 14, rect.centery - 8, 16, 16)
+        color = st["accent"] if generation in generations else st["sub"]
+        pygame.draw.rect(screen, color, checkbox, 2, border_radius=3)
+        if generation in generations:
+            pygame.draw.lines(screen, color, False,
+                              [(checkbox.x + 3, checkbox.y + 8),
+                               (checkbox.x + 6, checkbox.y + 11),
+                               (checkbox.x + 12, checkbox.y + 4)], 2)
+        label = sp.font_mid.render("第%d世代" % generation, True, st["text"])
+        screen.blit(label, label.get_rect(midleft=(rect.x + 42, rect.centery)))
+        click_rects.append(("GEN_%d" % generation, rect))
+
+    height, top = (30, FB_HEIGHT - 56) if PORTRAIT else (26, FB_HEIGHT - 46)
+    done = pygame.Rect((FB_WIDTH - 92) // 2, top, 92, height)
+    selected = row == len(GENERATION_RANGES)
+    rrect(done, 7, st["panel_hi"] if selected else st["panel"],
+          border=st["accent"], bw=2 if selected else 0)
+    label = sp.font_small.render("完 成", True, st["text"])
+    screen.blit(label, label.get_rect(center=done.center))
+    click_rects.append(("GEN_DONE", done))
+    draw_hint(st, (("K1", "上一项"), ("K2", "下一项"),
+                   ("K3", "完成" if row == len(GENERATION_RANGES) else "勾选")))
+    return click_rects
 
 
 def draw_message(style_name, text, t):
@@ -329,42 +397,103 @@ def draw_message(style_name, text, t):
         r = f.render(line, True, st["text"] if i == 0 else st["sub"])
         screen.blit(r, ((FB_WIDTH - r.get_width()) // 2, y))
         y += 26
-    draw_hint(st, "按任意键返回")
+    draw_hint(st, (("K3", "返回"),))
 
 
 # ---------------------------------------------------------------------------
 # 事件处理(真机 GPIO 轮询 / 模拟键盘)
 # ---------------------------------------------------------------------------
-def pump(handler):
-    """处理一帧输入事件, 调用 handler(按键名)。返回 False 表示退出程序。"""
+def pump(handler, click_rects=(), hold=None):
+    """处理一帧按键；模拟模式可额外指定可点击区域。"""
     if sp.gpio is not None:
         for name in sp.poll_buttons():
-            handler(name)
+            if hold is None or name != "K3":
+                handler(name)
+        if hold is not None:
+            source = ("gpio", "K3")
+            if sp.gpio.input(sp.BUTTONS["K3"]) == sp.gpio.LOW:
+                hold.press(source)
+            else:
+                name = hold.release(source)
+                if name:
+                    handler(name)
+            name = hold.poll()
+            if name:
+                handler(name)
         return sp.spi_lcd.pump()
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             return False
+        name = None
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_ESCAPE, pygame.K_q):
                 return False
             name = sp.handle_key(event.key)
-            if name:
-                handler(name)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            name = sp.spi_lcd.button_from_mouse(event, _hint_button_rects)
+            if name is None:
+                name = sp.spi_lcd.button_from_mouse(event, click_rects)
+        if hold is not None:
+            name = hold.process_event(event, name)
+        if name:
+            handler(name)
+    if hold is not None:
+        name = hold.poll()
+        if name:
+            handler(name)
     return True
 
 
 # ---------------------------------------------------------------------------
 # 各个子界面循环
 # ---------------------------------------------------------------------------
+def generations_loop(style_name, generations):
+    selected = set(generations)
+    row = 0
+    hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
+    clock = pygame.time.Clock()
+
+    while True:
+        click_rects = draw_generations_page(style_name, row, selected, time.time())
+        if not sp.spi_lcd.present(poll_events=False):
+            return None
+        actions = []
+        if not pump(actions.append, click_rects, hold):
+            return None
+        for action in actions:
+            generation = None
+            if action == "BACK":
+                return sorted(generations)
+            elif action == "K1":
+                row = (row - 1) % (len(GENERATION_RANGES) + 1)
+            elif action == "K2":
+                row = (row + 1) % (len(GENERATION_RANGES) + 1)
+            elif action == "GEN_DONE" or (action == "K3" and row == len(GENERATION_RANGES)):
+                return sorted(selected)
+            elif action.startswith("GEN_"):
+                generation = int(action[4:])
+                row = generation - 1
+            elif action == "K3":
+                generation = row + 1
+            if generation is not None:
+                if generation in selected:
+                    selected.remove(generation)
+                else:
+                    selected.add(generation)
+        clock.tick(24)
+
+
 def settings_loop(saved, discovered):
-    """设置页循环。返回(可能更新并已保存的)设置; 取消则原样返回。
+    """设置页循环。取消或长按 K3 返回原设置，关闭窗口或 Esc 返回 None。
 
     discovered 以引用传入: 在"重置发现"行两次 K3 确认后原地清空并落盘。
     """
     cur = dict(saved)
+    cur["generations"] = list(saved.get("generations", GENERATION_RANGES))
     row = 0
     confirm_t0 = [None]          # 重置二次确认的起始时刻(None=未确认)
     CONFIRM_WAIT = 5.0           # 确认状态保持秒数
+    hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
     clock = pygame.time.Clock()
 
     def confirming(now=None):
@@ -372,20 +501,30 @@ def settings_loop(saved, discovered):
                 and (now or time.time()) - confirm_t0[0] < CONFIRM_WAIT)
 
     while True:
-        draw_settings_page(cur["style"], row, cur["order"], time.time(),
-                           confirm=confirming(), found=len(discovered))
-        if not sp.spi_lcd.present():
-            return saved
+        click_rects = draw_settings_page(cur["style"], row, cur["order"], time.time(),
+                                         confirm=confirming(), found=len(discovered),
+                                         generations=cur["generations"])
+        if not sp.spi_lcd.present(poll_events=False):
+            return None
         acts = []
-        if not pump(lambda n: acts.append(n)):
-            return saved
+        if not pump(acts.append, click_rects, hold):
+            return None
         ok_confirm = confirming()
         for name in acts:
+            if name == "BACK":
+                return saved
+            if name.startswith("ROW_"):
+                selected_row = int(name[4:])
+                if row != selected_row:
+                    confirm_t0[0] = None
+                    ok_confirm = False
+                row = selected_row
+                name = "K3"
             if name == "K1":
-                row = (row - 1) % 5
+                row = (row - 1) % 6
                 confirm_t0[0] = None
             elif name == "K2":
-                row = (row + 1) % 5
+                row = (row + 1) % 6
                 confirm_t0[0] = None
             elif name == "K3":
                 if row == 0:      # 切换显示顺序
@@ -394,7 +533,14 @@ def settings_loop(saved, discovered):
                 elif row == 1:    # 切换界面风格(即时预览)
                     cur["style"] = STYLE_NAMES[
                         (STYLE_NAMES.index(cur["style"]) + 1) % len(STYLE_NAMES)]
-                elif row == 2:    # 重置发现(两次 K3 确认)
+                elif row == 2:
+                    sp.wait_release("K3")
+                    generations = generations_loop(cur["style"], cur["generations"])
+                    if generations is None:
+                        return None
+                    cur["generations"] = generations
+                    sp.wait_release("K3")
+                elif row == 3:    # 重置发现(两次 K3 确认)
                     if ok_confirm:
                         discovered.clear()
                         save_discovered(discovered)
@@ -402,7 +548,7 @@ def settings_loop(saved, discovered):
                         confirm_t0[0] = None
                     else:
                         confirm_t0[0] = time.time()
-                elif row == 3:    # 取消
+                elif row == 4:    # 取消
                     return saved
                 else:             # 保存
                     save_settings(cur)
@@ -412,16 +558,16 @@ def settings_loop(saved, discovered):
 
 
 def message_loop(style_name, text):
-    """提示页: 等待任意按键返回。"""
+    """提示页: 等待 K3 返回。"""
     clock = pygame.time.Clock()
     while True:
         draw_message(style_name, text, time.time())
-        if not sp.spi_lcd.present():
+        if not sp.spi_lcd.present(poll_events=False):
             return
         acts = []
         if not pump(lambda n: acts.append(n)):
             return
-        if acts:
+        if "K3" in acts:
             return
         clock.tick(24)
 
@@ -430,13 +576,16 @@ def main():
     settings = load_settings()
     discovered = load_discovered()
     sel = [0]
+    hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
     clock = pygame.time.Clock()
     running = True
-    print("主界面启动: K1 上 / K2 下 / K3 确定; 浏览页长按 K3 返回。")
+    print("主界面启动: K1 上一项 / K2 下一项 / K3 确定, 长按 K3 退出; 模拟模式可点击底栏功能文字。")
 
     def on_key(name):
         nonlocal settings, running
-        if name == "K1":
+        if name == "BACK":
+            running = False
+        elif name == "K1":
             sel[0] = (sel[0] - 1) % 4
         elif name == "K2":
             sel[0] = (sel[0] + 1) % 4
@@ -445,7 +594,11 @@ def main():
             # 否则长按连发事件会被下方子界面/主界面误判为新按键
             sp.wait_release("K3")
             if sel[0] == 3:                                   # 设置
-                settings = settings_loop(settings, discovered)
+                updated_settings = settings_loop(settings, discovered)
+                if updated_settings is None:
+                    running = False
+                    return
+                settings = updated_settings
                 sp.wait_release("K3")      # 设置页按 K3 退出后可能仍按住
             else:                                             # 全部/未发现/已发现
                 mode = ("all", "unseen", "found")[sel[0]]
@@ -455,19 +608,23 @@ def main():
                               on_viewed=lambda p: discovered.add(p["id"]),
                               back_hold=K3_HOLD_BACK)
                 else:
-                    msg = ("还没有已发现的宝可梦\n先去 全部 里逛逛吧!"
-                           if mode == "found"
-                           else "没有未发现的宝可梦\n全部都发现啦!")
+                    if not settings.get("generations", GENERATION_RANGES):
+                        msg = "没有选择宝可梦世代\n请在设置中勾选"
+                    elif mode == "found":
+                        msg = "所选世代还没有已发现\n先去 全部 里逛逛吧!"
+                    elif mode == "unseen":
+                        msg = "所选世代没有未发现\n全部都发现啦!"
+                    else:
+                        msg = "所选世代没有宝可梦\n请检查世代设置"
                     message_loop(settings["style"], msg)
                 save_discovered(discovered)                    # 浏览记录落盘
 
     try:
         while running:
-            total = len(sp.POKEMONS)
-            found = len(discovered)
-            draw_menu(settings, sel[0], (total, total - found, found), time.time())
-            running = sp.spi_lcd.present()
-            if running and not pump(on_key):
+            counts = menu_counts(settings, discovered)
+            draw_menu(settings, sel[0], counts, time.time())
+            running = sp.spi_lcd.present(poll_events=False)
+            if running and not pump(on_key, hold=hold):
                 running = False
             clock.tick(24)
     finally:
@@ -482,9 +639,7 @@ def main():
 def run_screenshots():
     settings = load_settings()
     discovered = load_discovered()
-    total = len(sp.POKEMONS)
-    found = len(discovered)
-    counts = (total, total - found, found)
+    counts = menu_counts(settings, discovered)
 
     out = []
     for i, style in enumerate(STYLE_NAMES):       # 各风格主界面
@@ -497,7 +652,7 @@ def run_screenshots():
     path = os.path.join(BASE_DIR, "_menu_4.png")
     pygame.image.save(screen, path)
     out.append(path)
-    draw_settings_page("夜空", 2, "随机", time.time(), confirm=True, found=128)
+    draw_settings_page("夜空", 3, "随机", time.time(), confirm=True, found=128)
     path = os.path.join(BASE_DIR, "_menu_6.png")
     pygame.image.save(screen, path)
     out.append(path)
