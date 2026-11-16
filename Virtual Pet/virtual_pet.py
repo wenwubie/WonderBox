@@ -625,7 +625,7 @@ class PetGame:
 			elif self.view == "tasks":
 				self.request_activity(DAILY_TASKS[self.index][0])
 			elif self.view == "confirm_action":
-				if self.index == 0:
+				if self.index == 1:      # 取消(第二项, 动作在第一项按 K3 直接开始)
 					self.show(self.pending_origin)
 				elif self.pending_action == "play":
 					self.world.check_care(self.owner_id, self.pet_id, "play")
@@ -1309,7 +1309,7 @@ class PetDisplay:
 				pet = game.world.pet(game.owner_id, game.pet_id)
 				name = SKILLS[pet["species"]][game.pending_skill][0]
 			return "%s %s" % (name, duration_text(duration)), [
-				("取消", ""), ("开始", "冷却%s" % duration_text(cooldown))]
+				("开始", "冷却%s" % duration_text(cooldown)), ("取消", "")]
 		if game.view == "confirm_stop":
 			return "中止后没有奖励", [("继续行动", ""), ("确认结束", "")]
 		if game.view == "skills":
