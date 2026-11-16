@@ -120,8 +120,8 @@ class LauncherDisplay:
         self.brand_font = spi_lcd.load_font(19 if self.portrait else 17)
         self.brand_font.set_bold(True)
         self.chinese_font = spi_lcd.load_font(14 if self.portrait else 13)
-        self.name_fonts = [spi_lcd.load_font(size) for size in (14, 13, 12, 11)]
-        self.small_font = spi_lcd.load_font(11)
+        self.name_fonts = [spi_lcd.load_font(size) for size in (15, 14, 13, 12)]
+        self.small_font = spi_lcd.load_font(12)
         self.button_font = spi_lcd.load_font(13)
         self.dialog_font = spi_lcd.load_font(19)
         self.declaration_font = spi_lcd.load_font(16 if self.portrait else 15)
@@ -131,12 +131,12 @@ class LauncherDisplay:
         top, gap, margin = self.section_y + 20, 6, 10
         width = (self.width - 2 * margin - gap) // 2
         rows = (len(GAMES) + 1) // 2
-        height = (self.footer_top - top - 4 - rows * gap) // (rows + 1)  # 多留一行给设置
+        height = (self.footer_top - top - 4 - (rows - 1) * gap) // rows  # 全部高度给游戏卡片
         self.game_rects = [pygame.Rect(margin + (index % 2) * (width + gap),
                                       top + (index // 2) * (height + gap), width, height)
                            for index in range(len(GAMES))]
-        self.settings_rect = pygame.Rect(margin, top + rows * (height + gap),
-                                         2 * width + gap, height)  # 设置: 通栏一行
+        # 设置: 主界面右上角的小齿轮(光标导航的最后一项)
+        self.settings_rect = pygame.Rect(self.width - 35, 6, 28, 28)
         self.buttons = [pygame.Rect(index * self.width // 3, self.footer_top,
                                     (index + 1) * self.width // 3 - index * self.width // 3, 27)
                         for index in range(3)]
@@ -272,8 +272,8 @@ class LauncherDisplay:
             self.draw_declaration()
             self.draw_footer(False, declaration=True)
             return
-        self.text(state.notice or "全部游戏", self.small_font, CORAL if state.notice else LIGHT_MUTED,
-                  (11, self.section_y))
+        self.text(state.notice or ("界面风格 · 设置" if state.selected == len(GAMES) else "全部游戏"),
+                  self.small_font, CORAL if state.notice else LIGHT_MUTED, (11, self.section_y))
         count = "%02d / %02d" % (state.selected + 1, len(GAMES) + 1)
         count_image = self.small_font.render(count, True, LIGHT_TEAL)
         self.screen.blit(count_image, (self.width - count_image.get_width() - 11, self.section_y))
@@ -281,7 +281,7 @@ class LauncherDisplay:
             selected = index == state.selected
             pygame.draw.rect(self.screen, SELECTED if selected else PAPER, rect, border_radius=6)
             pygame.draw.rect(self.screen, TEAL if selected else LINE, rect, 2 if selected else 1, border_radius=6)
-            chip = min(26, rect.height - 2)
+            chip = min(28, rect.height - 4)
             icon = pygame.Rect(rect.x + 7, rect.centery - chip // 2, chip, chip)
             self.draw_icon(game, icon)
             text_x = icon.right + 5
@@ -292,29 +292,24 @@ class LauncherDisplay:
             text_y = rect.centery - (font.get_height() + self.small_font.get_height()) // 2
             self.text(game.name, font, INK, (text_x, text_y))
             self.text(game.description, self.small_font, MUTED, (text_x, text_y + font.get_height()))
-        rect = self.settings_rect  # 设置卡片(通栏)
-        selected = state.selected == len(GAMES)
-        pygame.draw.rect(self.screen, SELECTED if selected else PAPER, rect, border_radius=6)
-        pygame.draw.rect(self.screen, TEAL if selected else LINE, rect, 2 if selected else 1, border_radius=6)
-        chip = min(26, rect.height - 2)
-        icon = pygame.Rect(rect.x + 7, rect.centery - chip // 2, chip, chip)
-        self.draw_settings_icon(icon)
-        text_x = icon.right + 5
-        font = self.name_fonts[1]
-        text_y = rect.centery - (font.get_height() + self.small_font.get_height()) // 2
-        self.text("设置", font, INK, (text_x, text_y))
-        self.text("界面风格", self.small_font, MUTED, (text_x, text_y + font.get_height()))
+        self.draw_gear(self.settings_rect, state.selected == len(GAMES))
         if state.confirming_power:
             self.draw_power_dialog(state)
         self.draw_footer(state.confirming_power)
 
-    def draw_settings_icon(self, rect):
-        pygame.draw.rect(self.screen, TEAL, rect, border_radius=6)
+    def draw_gear(self, rect, selected):
+        """主界面右上角的设置齿轮; 选中时高亮成小卡片。"""
+        if selected:
+            pygame.draw.rect(self.screen, SELECTED, rect, border_radius=6)
+            pygame.draw.rect(self.screen, TEAL, rect, 2, border_radius=6)
+            color = INK
+        else:
+            color = LIGHT_MUTED
         center = rect.center
-        pygame.draw.circle(self.screen, PAPER, center, 8, 2)
-        pygame.draw.circle(self.screen, PAPER, center, 3)
+        pygame.draw.circle(self.screen, color, center, 8, 2)
+        pygame.draw.circle(self.screen, color, center, 3)
         for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-            pygame.draw.line(self.screen, PAPER, (center[0] + dx * 8, center[1] + dy * 8),
+            pygame.draw.line(self.screen, color, (center[0] + dx * 8, center[1] + dy * 8),
                              (center[0] + dx * 11, center[1] + dy * 11), 2)
 
     def draw_settings_page(self):
