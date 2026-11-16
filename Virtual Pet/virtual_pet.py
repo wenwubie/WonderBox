@@ -21,6 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 sys.path.insert(0, str(ROOT_DIR / "Lucky Wheel"))
 from common import spi_lcd
+from common import ui_theme
 from lucky_wheel import GPIOButtons, QUIT_HOLD_SECONDS
 
 SAVE_FILE = Path(__file__).resolve().parent / "data" / "pets.json"
@@ -664,14 +665,15 @@ class PetGame:
 		return None
 
 
-INK = (54, 68, 65)
-PAPER = (255, 255, 252)
-JADE = (34, 120, 106)
-CORAL = (193, 81, 69)
-GOLD = (235, 182, 65)
-SKY = (220, 245, 246)
-GRASS = (183, 226, 190)
-OUTLINE = (91, 71, 66)
+_st = ui_theme.style()  # 全局界面风格
+INK = _st["text"]
+PAPER = _st["panel"]
+JADE = _st["accent"]
+CORAL = (193, 81, 69)   # 固定暖色(警示)
+GOLD = (235, 182, 65)   # 固定金色(奖励)
+SKY = _st["bg"]         # 场景天空跟随风格
+GRASS = (183, 226, 190)  # 固定草地色(场景)
+OUTLINE = (91, 71, 66)   # 固定宠物描边
 
 
 def star_points(center, radius, inner=None):
@@ -1176,6 +1178,7 @@ class PetDisplay:
 		colors = ((CORAL, PAPER), (JADE, PAPER), (GOLD, INK))
 		for index, (label, rect) in enumerate(zip(labels, self.buttons)):
 			color, foreground = colors[index] if enabled[index] else ((219, 228, 223), (83, 92, 89))
+			foreground = ui_theme.pick(color, foreground) if enabled[index] else foreground
 			button = rect.inflate(-5, -6)
 			pygame.draw.rect(self.screen, color, button, border_radius=4)
 			self.centered(label, self.button_font, foreground, button.center)
@@ -1378,15 +1381,17 @@ class PetDisplay:
 			rect = pygame.Rect(self.list_area.x, row_top + visible * (row_height + 4),
 							   self.list_area.width, row_height)
 			selected = index == game.index
-			pygame.draw.rect(self.screen, (223, 244, 228) if selected else PAPER, rect, border_radius=5)
+			fill = (223, 244, 228) if selected else PAPER
+			pygame.draw.rect(self.screen, fill, rect, border_radius=5)
 			pygame.draw.rect(self.screen, JADE if selected else (190, 219, 204), rect,
 							 2 if selected else 1, border_radius=5)
 			pygame.draw.circle(self.screen, (234, 155, 110) if selected else (176, 206, 189),
 							   (rect.x + 12, rect.centery), 4)
-			detail_image = self.small_font.render(detail, True, (95, 116, 105))
+			detail_image = self.small_font.render(detail, True,
+												  ui_theme.pick(fill, (95, 116, 105)))
 			available = rect.width - 32 - detail_image.get_width()
 			font, shown = self.fit(label, available)
-			image = font.render(shown, True, INK)
+			image = font.render(shown, True, ui_theme.pick(fill, INK))
 			self.screen.blit(image, image.get_rect(midleft=(rect.x + 22, rect.centery)))
 			self.screen.blit(detail_image, detail_image.get_rect(midright=(rect.right - 8, rect.centery)))
 			self.click_targets.append((rect, "CHOOSE_%d" % index))
@@ -1529,7 +1534,8 @@ class PetDisplay:
 							 2 if selected else 1, border_radius=5)
 			icon_y = rect.y + (13 if rect.height > 43 else 10)
 			self.action_icon(key, (rect.centerx, icon_y), background)
-			self.centered(label, self.small_font, INK, (rect.centerx, rect.bottom - 9))
+			self.centered(label, self.small_font, ui_theme.pick(background, INK),
+						  (rect.centerx, rect.bottom - 9))
 			self.click_targets.append((rect, "CHOOSE_%d" % index))
 		self.footer(("上一项", "下一项", "执行"))
 
@@ -1568,7 +1574,7 @@ class PetDisplay:
 			self.footer(("左选", "右选", "打开"))
 
 	def draw_error(self):
-		self.screen.fill((237, 247, 241))
+		self.screen.fill(SKY)
 		self.header(None)
 		self.centered("宠物存档无法读取", self.name_font, CORAL, (self.width // 2, self.height // 2 - 15))
 		self.centered("原存档未修改，请检查文件", self.small_font, INK, (self.width // 2, self.height // 2 + 10))
@@ -1577,7 +1583,7 @@ class PetDisplay:
 	def draw(self, game, now=None):
 		now = time.monotonic() if now is None else now
 		self.click_targets = []
-		self.screen.fill((237, 247, 241))
+		self.screen.fill(SKY)
 		self.header(game)
 		if game.view == "home":
 			self.draw_home(game, now)

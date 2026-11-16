@@ -13,11 +13,14 @@ import unicodedata
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, "riddles.json")
 ROOT_DIR = os.path.dirname(BASE_DIR)
+sys.path.insert(0, ROOT_DIR)
 sys.path.insert(0, os.path.join(ROOT_DIR, "Lucky Wheel"))
 wheel_support = importlib.import_module("lucky_wheel")
 event_action = wheel_support.event_action
 present_frame = wheel_support.present_frame
 spi_lcd = wheel_support.spi_lcd
+
+from common import ui_theme
 
 import pygame
 
@@ -290,16 +293,17 @@ class RiddleApp:
 			self.notice = ""
 
 
-BACKGROUND = (229, 246, 238)
-PAPER = (255, 255, 253)
-INK = (50, 67, 68)
-MUTED = (105, 129, 121)
-TEAL = (42, 140, 136)
-CORAL = (224, 102, 91)
-YELLOW = (255, 204, 93)
+_st = ui_theme.style()  # 全局界面风格
+BACKGROUND = _st["bg"]
+PAPER = _st["panel"]
+INK = _st["text"]
+MUTED = _st["sub"]
+TEAL = _st["accent"]
+CORAL = (224, 102, 91)  # 固定暖色(警示)
+YELLOW = (255, 204, 93)  # 固定金色(奖励)
 ANSWER_HIDDEN = (255, 243, 200)
 ANSWER_SHOWN = (216, 241, 230)
-OUTLINE = (181, 215, 203)
+OUTLINE = _st["deco"]
 
 
 def wrap_text(text, font, max_width):
@@ -394,17 +398,18 @@ class RiddleDisplay:
 		if show_menu:
 			rect = self.menu_button
 			pygame.draw.rect(self.screen, ANSWER_SHOWN, rect, border_radius=6)
-			pygame.draw.lines(self.screen, TEAL, False,
+			icon_color = ui_theme.pick(ANSWER_SHOWN, TEAL)
+			pygame.draw.lines(self.screen, icon_color, False,
 							  [(rect.x + 5, rect.y + 13), (rect.centerx, rect.y + 7),
 							   (rect.right - 5, rect.y + 13)], 2)
-			pygame.draw.rect(self.screen, TEAL, (rect.x + 7, rect.y + 13, 10, 8), 2)
+			pygame.draw.rect(self.screen, icon_color, (rect.x + 7, rect.y + 13, 10, 8), 2)
 
 	def draw_question(self, game):
 		rect = self.question_rect
 		pygame.draw.rect(self.screen, PAPER, rect, border_radius=8)
 		pygame.draw.rect(self.screen, OUTLINE, rect, 1, border_radius=8)
 		pygame.draw.circle(self.screen, TEAL, (rect.x + 17, rect.y + 17), 10)
-		letter = self.font(13).render("Q", True, PAPER)
+		letter = self.font(13).render("Q", True, ui_theme.pick(TEAL, PAPER))
 		self.screen.blit(letter, letter.get_rect(center=(rect.x + 17, rect.y + 17)))
 		label_text = dict(RiddleApp.OPTIONS).get(game.mode, "转转脑袋")
 		label = self.font(13).render(label_text, True, TEAL)
@@ -423,7 +428,7 @@ class RiddleDisplay:
 		color = ANSWER_SHOWN if game.revealed else ANSWER_HIDDEN
 		pygame.draw.rect(self.screen, color, rect, border_radius=7)
 		pygame.draw.circle(self.screen, CORAL, (rect.x + 21, rect.centery), 12)
-		letter = self.font(15).render("A", True, PAPER)
+		letter = self.font(15).render("A", True, ui_theme.pick(CORAL, PAPER))
 		self.screen.blit(letter, letter.get_rect(center=(rect.x + 21, rect.centery)))
 		if game.at_end:
 			answer = "再选一组继续玩！" if game.mode is not None else "休息一下，再来一轮！"
@@ -431,7 +436,9 @@ class RiddleDisplay:
 			answer = game.current[1]
 		else:
 			answer = "答案藏起来啦"
-		self.draw_fitted(answer, self.answer_text_rect, INK if game.revealed else MUTED,
+		# 答案卡底色是固定浅色, 文字颜色按底色自适应
+		self.draw_fitted(answer, self.answer_text_rect,
+						 ui_theme.pick(color, INK if game.revealed else MUTED),
 						 18 if self.portrait else 17)
 
 	def draw_buttons(self, game):
@@ -448,7 +455,7 @@ class RiddleDisplay:
 		colors = ((248, 167, 146), (115, 199, 183), (255, 208, 112))
 		for index, rect in enumerate(self.buttons):
 			color = colors[index] if enabled[index] else (218, 228, 222)
-			text_color = INK if enabled[index] else (83, 92, 89)
+			text_color = ui_theme.pick(color, INK) if enabled[index] else (83, 92, 89)
 			pygame.draw.rect(self.screen, color, rect, border_radius=6)
 			image = self.font(13).render(labels[index], True, text_color)
 			self.screen.blit(image, image.get_rect(center=rect.center))
@@ -475,17 +482,19 @@ class RiddleDisplay:
 		for index, (mode, label) in enumerate(app.OPTIONS):
 			rect = self.menu_rows[index]
 			selected = index == app.selection
-			pygame.draw.rect(self.screen, ANSWER_SHOWN if selected else PAPER, rect, border_radius=7)
+			fill = ANSWER_SHOWN if selected else PAPER
+			pygame.draw.rect(self.screen, fill, rect, border_radius=7)
 			pygame.draw.rect(self.screen, TEAL if selected else OUTLINE, rect, 2 if selected else 1,
 							 border_radius=7)
 			center = (rect.x + 22, rect.centery)
 			pygame.draw.circle(self.screen, colors[index], center, min(13, rect.height // 2 - 2))
-			icon = self.font(13).render(icons[index], True, PAPER)
+			icon = self.font(13).render(icons[index], True, ui_theme.readable(colors[index]))
 			self.screen.blit(icon, icon.get_rect(center=center))
-			image = self.font(18).render(label, True, INK)
+			image = self.font(18).render(label, True, ui_theme.pick(fill, INK))
 			self.screen.blit(image, image.get_rect(midleft=(rect.x + 44, rect.centery)))
 			count_text = "清除记录" if mode == "reset" else "%d 题" % counts[mode]
-			count = self.font(14).render(count_text, True, TEAL if selected else MUTED)
+			count = self.font(14).render(count_text, True,
+										 ui_theme.pick(fill, TEAL) if selected else MUTED)
 			self.screen.blit(count, count.get_rect(midright=(rect.right - 12, rect.centery)))
 		notice = app.notice or ("记录未保存" if app.history.warned else "")
 		if notice:

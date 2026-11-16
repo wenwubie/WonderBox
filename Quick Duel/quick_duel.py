@@ -8,6 +8,7 @@ import sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
+sys.path.insert(0, ROOT_DIR)
 sys.path.insert(0, os.path.join(ROOT_DIR, "Lucky Wheel"))
 wheel_support = importlib.import_module("lucky_wheel")
 GPIOButtons = wheel_support.GPIOButtons
@@ -16,6 +17,8 @@ point_on_wheel = wheel_support.point_on_wheel
 present_frame = wheel_support.present_frame
 spi_lcd = wheel_support.spi_lcd
 wrap_text = wheel_support.wrap_text
+
+from common import ui_theme
 
 import pygame
 
@@ -240,12 +243,13 @@ class DuelGPIOButtons(GPIOButtons):
 		return ["BACK" if action == "QUIT" else action for action in super().poll()]
 
 
-BACKGROUND = (237, 245, 249)
-PAPER = (255, 255, 255)
-INK = (35, 54, 68)
-MUTED = (105, 124, 137)
-LINE = (209, 224, 232)
-PLAYER_COLORS = ((210, 89, 72), (55, 119, 191))
+_st = ui_theme.style()  # 全局界面风格
+BACKGROUND = _st["bg"]
+PAPER = _st["panel"]
+INK = _st["text"]
+MUTED = _st["sub"]
+LINE = _st["deco"]
+PLAYER_COLORS = ((210, 89, 72), (55, 119, 191))  # 双方识别色, 固定
 PLAYER_BACKGROUNDS = ((255, 242, 235), (234, 244, 255))
 RIM = (45, 70, 81)
 GOLD = (255, 211, 88)
@@ -391,11 +395,12 @@ class DuelDisplay:
 		self.screen.blit(image, image.get_rect(center=center))
 
 	def draw_header(self, game):
-		pygame.draw.rect(self.screen, (223, 237, 245), (0, 0, self.width, 37))
+		header_fill = (223, 237, 245)
+		pygame.draw.rect(self.screen, header_fill, (0, 0, self.width, 37))
 		title = "骰子对决" if game.view == "dice" else "挑战转盘"
-		self.text(title, self.title_font, INK, (11, 6))
+		self.text(title, self.title_font, ui_theme.pick(header_fill, INK), (11, 6))
 		badge = "第%d轮" % game.round_number if game.view == "dice" else "玩家%d" % game.loser
-		image = self.small_font.render(badge, True, INK)
+		image = self.small_font.render(badge, True, ui_theme.pick(GOLD, INK))
 		badge_rect = image.get_rect(center=(self.width - 38, 18)).inflate(14, 8)
 		pygame.draw.rect(self.screen, GOLD, badge_rect, border_radius=5)
 		self.screen.blit(image, image.get_rect(center=badge_rect.center))
@@ -495,17 +500,18 @@ class DuelDisplay:
 			points = [center] + [point_on_wheel(center, radius, start + SECTOR_ANGLE * step / 15)
 								 for step in range(16)]
 			pygame.draw.polygon(self.screen, color, points)
-		for index, (label, _, _) in enumerate(CHALLENGES):
+		for index, (label, color, _) in enumerate(CHALLENGES):
 			start = wheel.angle + index * SECTOR_ANGLE
 			pygame.draw.line(self.screen, PAPER, center, point_on_wheel(center, radius, start), 1)
 			position = point_on_wheel(center, radius * 0.68, start + SECTOR_ANGLE / 2)
-			self.centered(label, self.wheel_font, INK, position)
+			# 扇区底色固定, 文字颜色按扇区亮度自适应
+			self.centered(label, self.wheel_font, ui_theme.pick(color, INK), position)
 		for index in range(16):
 			position = point_on_wheel(center, radius + 6, index * 22.5)
 			active = (index + int(wheel.angle // 20)) % 2 == 0
 			pygame.draw.circle(self.screen, GOLD if active else (255, 248, 218), position, 2)
 		pygame.draw.circle(self.screen, RIM, center, 15)
-		self.centered("GO", self.hub_font, PAPER, center)
+		self.centered("GO", self.hub_font, ui_theme.readable(RIM), center)
 		pointer = [(center[0] + radius + 13, center[1] - 8),
 				   (center[0] + radius + 13, center[1] + 8),
 				   (center[0] + radius - 4, center[1])]
@@ -549,7 +555,7 @@ class DuelDisplay:
 		colors = ((251, 184, 164), (160, 200, 239), GOLD)
 		for index, rect in enumerate(self.buttons):
 			color = colors[index] if enabled[index] else (221, 229, 231)
-			text_color = INK if enabled[index] else (83, 92, 89)
+			text_color = ui_theme.pick(color, INK) if enabled[index] else (83, 92, 89)
 			pygame.draw.rect(self.screen, color, rect, border_radius=5)
 			self.centered(labels[index], self.button_font, text_color, rect.center)
 

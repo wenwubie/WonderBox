@@ -16,6 +16,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 sys.path.insert(0, str(ROOT_DIR / "Lucky Wheel"))
 from common import spi_lcd
+from common import ui_theme
 from lucky_wheel import GPIOButtons, QUIT_HOLD_SECONDS
 
 
@@ -217,16 +218,17 @@ class PoetryGame:
 		return None
 
 
-BACKGROUND = (237, 247, 241)
-PAPER = (255, 255, 253)
-INK = (38, 57, 55)
-MUTED = (87, 113, 104)
-JADE = (34, 120, 106)
-CORAL = (193, 81, 69)
-GOLD = (218, 164, 64)
-LINE = (190, 216, 202)
-DISABLED_BG = (222, 230, 225)
-DISABLED_TEXT = (83, 92, 89)
+_st = ui_theme.style()  # 全局界面风格
+BACKGROUND = _st["bg"]
+PAPER = _st["panel"]
+INK = _st["text"]
+MUTED = _st["sub"]
+JADE = _st["accent"]
+CORAL = (193, 81, 69)   # 固定暖色(错误/退出)
+GOLD = (218, 164, 64)   # 固定金色(奖励)
+LINE = _st["deco"]
+DISABLED_BG = tuple((a + b) // 2 for a, b in zip(_st["bg"], _st["panel"]))
+DISABLED_TEXT = _st["sub"]
 BUTTON_COLORS = ((CORAL, PAPER), (JADE, PAPER), (GOLD, INK))
 
 
@@ -325,6 +327,7 @@ class PoetryDisplay:
 		for index, (label, rect) in enumerate(zip(labels, self.buttons)):
 			inset = rect.inflate(-5, -6)
 			color, text_color = BUTTON_COLORS[index] if enabled[index] else (DISABLED_BG, DISABLED_TEXT)
+			text_color = ui_theme.pick(color, text_color)
 			pygame.draw.rect(self.screen, color, inset, border_radius=4)
 			self.centered(label, self.button_font, text_color, inset.center)
 
@@ -335,13 +338,14 @@ class PoetryDisplay:
 				  len(game.bank.children_works))
 		for index, ((label, _, _), rect) in enumerate(zip(MODES, self.modes)):
 			selected = index == game.mode
-			pygame.draw.rect(self.screen, (218, 241, 226) if selected else PAPER, rect, border_radius=6)
+			fill = (218, 241, 226) if selected else PAPER
+			pygame.draw.rect(self.screen, fill, rect, border_radius=6)
 			pygame.draw.rect(self.screen, JADE if selected else LINE, rect, 2 if selected else 1, border_radius=6)
 			pygame.draw.rect(self.screen, (JADE, CORAL, GOLD, (95, 137, 172), (112, 155, 83))[index],
 							 (rect.x + 9, rect.y + 9, 5, rect.height - 18), border_radius=2)
-			image = self.mode_font.render(label, True, INK)
+			image = self.mode_font.render(label, True, ui_theme.pick(fill, INK))
 			self.screen.blit(image, image.get_rect(midleft=(rect.x + 22, rect.centery)))
-			count = self.small_font.render("%d 首" % counts[index], True, MUTED)
+			count = self.small_font.render("%d 首" % counts[index], True, ui_theme.pick(fill, MUTED))
 			self.screen.blit(count, count.get_rect(midright=(rect.right - 10, rect.centery)))
 		self.draw_footer(("上一项", "下一项", "开始"), (True, True, True))
 
@@ -365,10 +369,11 @@ class PoetryDisplay:
 			pygame.draw.rect(self.screen, border, option_rect, 2 if correct or incorrect else 1, border_radius=6)
 			marker = pygame.Rect(option_rect.x + 7, option_rect.centery - 10, 20, 20)
 			marker_color, marker_text = BUTTON_COLORS[index]
+			marker_text = ui_theme.pick(marker_color, marker_text)
 			pygame.draw.rect(self.screen, marker_color, marker, border_radius=4)
 			self.centered(str(index + 1), self.button_font, marker_text, marker.center)
 			font, label = self.fit_one_line(question.choices[index], self.option_fonts, option_rect.width - 38)
-			image = font.render(label, True, INK)
+			image = font.render(label, True, ui_theme.pick(color, INK))
 			self.screen.blit(image, image.get_rect(midleft=(option_rect.x + 33, option_rect.centery)))
 
 		if game.phase == "feedback":

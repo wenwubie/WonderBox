@@ -27,6 +27,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))
 
 from common import spi_lcd
+from common import ui_theme
 
 # ---------------------------------------------------------------------------
 # 数据路径(相对本脚本所在目录)
@@ -39,15 +40,17 @@ SETTINGS_FILE = os.path.join(BASE_DIR, "pokedex_data", "settings.json")
 FB_WIDTH = spi_lcd.FB_WIDTH
 FB_HEIGHT = spi_lcd.FB_HEIGHT
 # ---------------------------------------------------------------------------
-# 颜色
+# 颜色(跟随全局界面风格, 见 common/ui_theme.py)
 # ---------------------------------------------------------------------------
-BG_COLOR = (18, 22, 30)
-PANEL_COLOR = (30, 38, 52)
-BAR_COLOR = (40, 52, 74)
-TEXT_COLOR = (235, 238, 244)
-SUB_COLOR = (150, 160, 178)
-ACCENT_COLOR = (0, 255, 140)
-WARN_COLOR = (255, 200, 80)
+_theme = ui_theme.style()
+BG_COLOR = _theme["bg"]
+PANEL_COLOR = _theme["panel"]
+BAR_COLOR = _theme["panel_hi"]
+TEXT_COLOR = _theme["text"]
+SUB_COLOR = _theme["sub"]
+ACCENT_COLOR = _theme["accent"]
+WARN_COLOR = _theme["title"]
+ROW_BG = tuple((a + b) // 2 for a, b in zip(_theme["bg"], _theme["panel"]))  # 招式表隔行底色
 
 TYPE_COLORS = {
     "一般": (168, 168, 120), "火": (240, 128, 48), "水": (104, 144, 240),
@@ -438,18 +441,19 @@ def draw_moves(p, move_page):
     # 数据行
     y = MOVE_LIST_TOP
     for i, mv in enumerate(chunk):
-        # 隔行底色
+        # 隔行底色(bg 与 panel 的混合, 保证深浅风格下都和文字有对比)
         if i % 2 == 0:
-            pygame.draw.rect(screen, PANEL_COLOR, (4, y, FB_WIDTH - 8, ROW_H))
+            pygame.draw.rect(screen, ROW_BG, (4, y, FB_WIDTH - 8, ROW_H))
         x = 6
         for (title, w), key in zip(cols, keys):
             val = mv[key]
             if key == "type":
-                color = TYPE_COLORS.get(val, TEXT_COLOR)
+                color = ui_theme.pick(ROW_BG, TYPE_COLORS.get(val, TEXT_COLOR))
                 text = val                      # 属性列已按实际宽度撑开, 不再截断
             elif key == "category":
                 color = (255, 170, 170) if val == "物理" else \
                         (170, 200, 255) if val == "特殊" else SUB_COLOR
+                color = ui_theme.pick(ROW_BG, color)
                 text = fit_text(val, font, w - 4)
             else:
                 color = TEXT_COLOR

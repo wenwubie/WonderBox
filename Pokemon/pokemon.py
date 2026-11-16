@@ -9,7 +9,7 @@
     全部(n)     浏览所选世代的宝可梦
     未发现(n)   只看还没查看过的
     已发现(m)   只看已查看过的
-    设置        显示顺序 + 界面风格 + 第 1～4 世代筛选
+    设置        显示顺序 + 第 1～4 世代筛选(界面风格在主界面"设置"里全局选择)
                 + 重置发现(两次 K3 确认清空全部世代的发现记录)
                 底部一行: 左 取消 | 右 保存
 
@@ -27,7 +27,8 @@ import random
 import sys
 import time
 
-import show_pokemon as sp   # 先导入: 由此完成显示初始化/字体/数据/按键
+import show_pokemon as sp   # 先导入: 由此完成显示初始化/字体/数据/按键(并把项目根目录加入 sys.path)
+from common import ui_theme  # 全局界面风格(主界面"设置"里选择)
 import pygame
 
 screen = sp.screen
@@ -41,35 +42,10 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 DISCOVERED_FILE = os.path.join(DATA_DIR, "discovered.json")
 
 # ---------------------------------------------------------------------------
-# 界面风格(可自由增删, key 出现在设置项里)
+# 界面风格: 全局统一, 由主界面"设置"选择(定义见 common/ui_theme.py)
 # ---------------------------------------------------------------------------
-STYLES = {
-    "夜空": {
-        "bg": (16, 20, 34), "panel": (32, 40, 60), "panel_hi": (48, 60, 88),
-        "text": (235, 238, 244), "sub": (150, 160, 178),
-        "accent": (255, 200, 80), "title": (255, 220, 120),
-        "deco": (110, 130, 180), "hint_bg": (26, 32, 48),
-    },
-    "糖果": {
-        "bg": (255, 214, 226), "panel": (255, 235, 242), "panel_hi": (255, 245, 250),
-        "text": (110, 44, 78), "sub": (172, 104, 134),
-        "accent": (255, 90, 140), "title": (240, 80, 130),
-        "deco": (255, 255, 255), "hint_bg": (250, 196, 212),
-    },
-    "森林": {
-        "bg": (14, 40, 26), "panel": (28, 64, 44), "panel_hi": (40, 88, 60),
-        "text": (230, 245, 235), "sub": (150, 190, 165),
-        "accent": (140, 255, 170), "title": (180, 255, 200),
-        "deco": (70, 130, 95), "hint_bg": (20, 52, 34),
-    },
-    "海洋": {
-        "bg": (10, 26, 52), "panel": (24, 50, 88), "panel_hi": (36, 68, 116),
-        "text": (225, 240, 255), "sub": (140, 170, 210),
-        "accent": (90, 200, 255), "title": (150, 220, 255),
-        "deco": (70, 110, 170), "hint_bg": (16, 38, 70),
-    },
-}
-STYLE_NAMES = list(STYLES)
+STYLES = ui_theme.STYLES
+STYLE_NAMES = ui_theme.STYLE_NAMES
 ORDER_NAMES = ["正序", "倒序", "随机"]
 GENERATION_RANGES = sp.GENERATION_RANGES
 
@@ -88,11 +64,9 @@ def load_settings():
     if not isinstance(s, dict):
         s = {}
     s.setdefault("order", "正序")
-    s.setdefault("style", "夜空")
+    s.pop("style", None)  # 界面风格已移到主界面全局设置
     if s["order"] not in ORDER_NAMES:
         s["order"] = "正序"
-    if s["style"] not in STYLES:
-        s["style"] = "夜空"
     s["generations"] = sp.normalize_generations(s.get("generations"))
     return s
 
@@ -246,7 +220,7 @@ def _card_layout(n):
 
 def draw_menu(settings, sel, counts, t):
     """主界面: 全部/未发现/已发现/设置。counts=(总数, 未发现, 已发现)。"""
-    st = STYLES[settings["style"]]
+    st = ui_theme.style()
     screen.fill(st["bg"])
     draw_deco(st, t)
     draw_title(st, "宝可梦图鉴", "白金版 · %d 只" % counts[0],
@@ -276,14 +250,14 @@ def draw_menu(settings, sel, counts, t):
     draw_hint(st, (("K1", "上一项"), ("K2", "下一项"), ("K3", "确定")))
 
 
-def draw_settings_page(style_name, row, cur_order, t, confirm=False, found=0, generations=None):
-    """设置页: 显示顺序、界面风格、世代筛选和重置发现。
+def draw_settings_page(row, cur_order, t, confirm=False, found=0, generations=None):
+    """设置页: 显示顺序、世代筛选和重置发现。
 
-    row: 0=显示顺序 1=界面风格 2=世代筛选 3=重置发现 4=取消 5=保存
+    row: 0=显示顺序 1=世代筛选 2=重置发现 3=取消 4=保存
     confirm: 重置发现的二次确认状态
     found: 当前已发现数量(重置行右侧显示)
     """
-    st = STYLES[style_name]
+    st = ui_theme.style()
     if generations is None:
         generations = list(GENERATION_RANGES)
     screen.fill(st["bg"])
@@ -292,7 +266,6 @@ def draw_settings_page(style_name, row, cur_order, t, confirm=False, found=0, ge
 
     items = [
         ("显示顺序", cur_order, False),
-        ("界面风格", style_name, False),
         ("世代筛选", "/".join(str(generation) for generation in generations) or "未选择", False),
         ("重置发现", "再按确认" if confirm else "全部%d只" % found, confirm),
     ]
@@ -316,7 +289,7 @@ def draw_settings_page(style_name, row, cur_order, t, confirm=False, found=0, ge
                st["panel_hi"] if selected else st["panel"]
         rrect(rect, 12, fill, border=st["accent"], bw=2 if selected else 0,
               shadow=selected)
-        lab = sp.font_mid.render(label, True, st["text"])
+        lab = sp.font_mid.render(label, True, ui_theme.pick(fill, st["text"]))
         screen.blit(lab, (x0 + 14, y + (card_h - lab.get_height()) // 2))
         v = sp.font_mid.render(value, True,
                                (255, 130, 130) if warn else st["accent"])
@@ -330,7 +303,7 @@ def draw_settings_page(style_name, row, cur_order, t, confirm=False, found=0, ge
         bh, bw_, by = 26, 92, FB_HEIGHT - 46
     gapx = 18
     bx = (FB_WIDTH - (2 * bw_ + gapx)) // 2
-    for i, (label, sel_row) in enumerate((("取 消", 4), ("保 存", 5))):
+    for i, (label, sel_row) in enumerate((("取 消", 3), ("保 存", 4))):
         selected = row == sel_row
         rect = (bx + i * (bw_ + gapx), by, bw_, bh)
         click_rects.append(("ROW_%d" % sel_row, pygame.Rect(rect)))
@@ -338,16 +311,16 @@ def draw_settings_page(style_name, row, cur_order, t, confirm=False, found=0, ge
                (60, 140, 90) if (selected and i == 1) else st["panel"]
         rrect(rect, 10, fill, border=st["accent"], bw=2 if selected else 0,
               shadow=selected)
-        lab = sp.font_small.render(label, True, st["text"])
+        lab = sp.font_small.render(label, True, ui_theme.pick(fill, st["text"]))
         screen.blit(lab, (rect[0] + (bw_ - lab.get_width()) // 2,
                           rect[1] + (bh - lab.get_height()) // 2))
     draw_hint(st, (("K1", "上一项"), ("K2", "下一项"),
-                   ("K3", "切换" if row < 2 else "确定")))
+                   ("K3", "切换" if row == 0 else "确定")))
     return click_rects
 
 
-def draw_generations_page(style_name, row, generations, t):
-    st = STYLES[style_name]
+def draw_generations_page(row, generations, t):
+    st = ui_theme.style()
     screen.fill(st["bg"])
     draw_deco(st, t)
     draw_title(st, "选择世代", "保存设置后生效", 32 if PORTRAIT else 20)
@@ -386,8 +359,8 @@ def draw_generations_page(style_name, row, generations, t):
     return click_rects
 
 
-def draw_message(style_name, text, t):
-    st = STYLES[style_name]
+def draw_message(text, t):
+    st = ui_theme.style()
     screen.fill(st["bg"])
     draw_deco(st, t)
     lines = text.split("\n")
@@ -447,14 +420,14 @@ def pump(handler, click_rects=(), hold=None):
 # ---------------------------------------------------------------------------
 # 各个子界面循环
 # ---------------------------------------------------------------------------
-def generations_loop(style_name, generations):
+def generations_loop(generations):
     selected = set(generations)
     row = 0
     hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
     clock = pygame.time.Clock()
 
     while True:
-        click_rects = draw_generations_page(style_name, row, selected, time.time())
+        click_rects = draw_generations_page(row, selected, time.time())
         if not sp.spi_lcd.present(poll_events=False):
             return None
         actions = []
@@ -501,7 +474,7 @@ def settings_loop(saved, discovered):
                 and (now or time.time()) - confirm_t0[0] < CONFIRM_WAIT)
 
     while True:
-        click_rects = draw_settings_page(cur["style"], row, cur["order"], time.time(),
+        click_rects = draw_settings_page(row, cur["order"], time.time(),
                                          confirm=confirming(), found=len(discovered),
                                          generations=cur["generations"])
         if not sp.spi_lcd.present(poll_events=False):
@@ -521,26 +494,23 @@ def settings_loop(saved, discovered):
                 row = selected_row
                 name = "K3"
             if name == "K1":
-                row = (row - 1) % 6
+                row = (row - 1) % 5
                 confirm_t0[0] = None
             elif name == "K2":
-                row = (row + 1) % 6
+                row = (row + 1) % 5
                 confirm_t0[0] = None
             elif name == "K3":
                 if row == 0:      # 切换显示顺序
                     cur["order"] = ORDER_NAMES[
                         (ORDER_NAMES.index(cur["order"]) + 1) % len(ORDER_NAMES)]
-                elif row == 1:    # 切换界面风格(即时预览)
-                    cur["style"] = STYLE_NAMES[
-                        (STYLE_NAMES.index(cur["style"]) + 1) % len(STYLE_NAMES)]
-                elif row == 2:
+                elif row == 1:    # 世代筛选
                     sp.wait_release("K3")
-                    generations = generations_loop(cur["style"], cur["generations"])
+                    generations = generations_loop(cur["generations"])
                     if generations is None:
                         return None
                     cur["generations"] = generations
                     sp.wait_release("K3")
-                elif row == 3:    # 重置发现(两次 K3 确认)
+                elif row == 2:    # 重置发现(两次 K3 确认)
                     if ok_confirm:
                         discovered.clear()
                         save_discovered(discovered)
@@ -548,7 +518,7 @@ def settings_loop(saved, discovered):
                         confirm_t0[0] = None
                     else:
                         confirm_t0[0] = time.time()
-                elif row == 4:    # 取消
+                elif row == 3:    # 取消
                     return saved
                 else:             # 保存
                     save_settings(cur)
@@ -557,11 +527,11 @@ def settings_loop(saved, discovered):
         clock.tick(24)
 
 
-def message_loop(style_name, text):
+def message_loop(text):
     """提示页: 等待 K3 返回。"""
     clock = pygame.time.Clock()
     while True:
-        draw_message(style_name, text, time.time())
+        draw_message(text, time.time())
         if not sp.spi_lcd.present(poll_events=False):
             return
         acts = []
@@ -616,7 +586,7 @@ def main():
                         msg = "所选世代没有未发现\n全部都发现啦!"
                     else:
                         msg = "所选世代没有宝可梦\n请检查世代设置"
-                    message_loop(settings["style"], msg)
+                    message_loop(msg)
                 save_discovered(discovered)                    # 浏览记录落盘
 
     try:
@@ -642,24 +612,28 @@ def run_screenshots():
     counts = menu_counts(settings, discovered)
 
     out = []
+    original = ui_theme.style_name()
     for i, style in enumerate(STYLE_NAMES):       # 各风格主界面
-        s = dict(settings, style=style)
-        draw_menu(s, i % 4, counts, time.time())
+        ui_theme.set_style(style)
+        draw_menu(settings, i % 4, counts, time.time())
         path = os.path.join(BASE_DIR, "_menu_%d.png" % i)
         pygame.image.save(screen, path)
         out.append(path)
-    draw_settings_page("夜空", 1, "随机", time.time(), confirm=False, found=128)
+    ui_theme.set_style("夜空")
+    draw_settings_page(0, "随机", time.time(), confirm=False, found=128)
     path = os.path.join(BASE_DIR, "_menu_4.png")
     pygame.image.save(screen, path)
     out.append(path)
-    draw_settings_page("夜空", 3, "随机", time.time(), confirm=True, found=128)
+    draw_settings_page(2, "随机", time.time(), confirm=True, found=128)
     path = os.path.join(BASE_DIR, "_menu_6.png")
     pygame.image.save(screen, path)
     out.append(path)
-    draw_message("糖果", "还没有已发现的宝可梦\n先去 全部 里逛逛吧!", time.time())
+    ui_theme.set_style("糖果")
+    draw_message("还没有已发现的宝可梦\n先去 全部 里逛逛吧!", time.time())
     path = os.path.join(BASE_DIR, "_menu_5.png")
     pygame.image.save(screen, path)
     out.append(path)
+    ui_theme.set_style(original)
     for p in out:
         print("已保存:", p)
 

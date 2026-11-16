@@ -9,6 +9,7 @@ import sys
 import time
 
 from common import spi_lcd
+from common import ui_theme
 
 import pygame
 
@@ -46,10 +47,19 @@ class LauncherState:
         self.power_selected = 0
         self.notice = ""
         self.show_declaration = show_declaration
+        self.show_settings = False
 
     def handle_action(self, action):
         if self.show_declaration:
             return "ACCEPT_DECLARATION" if action == "K3" else None
+        if self.show_settings:
+            if action == "K1":
+                return "STYLE_PREV"
+            if action == "K2":
+                return "STYLE_NEXT"
+            if action == "K3":
+                return "CLOSE_SETTINGS"
+            return None
         if action == "POWER":
             self.confirming_power = not self.confirming_power
             self.power_selected = 0
@@ -66,30 +76,39 @@ class LauncherState:
                     return "SHUTDOWN"
                 self.confirming_power = False
         elif action in ("K1", "K2"):
-            self.selected = (self.selected + (-1 if action == "K1" else 1)) % len(GAMES)
+            self.selected = (self.selected + (-1 if action == "K1" else 1)) % (len(GAMES) + 1)
             self.notice = ""
         elif action == "K3":
-            return "LAUNCH"
+            return "SETTINGS" if self.selected == len(GAMES) else "LAUNCH"
         elif action and action.startswith("GAME_"):
             index = int(action[5:])
-            if 0 <= index < len(GAMES):
+            if 0 <= index <= len(GAMES):
                 self.selected = index
-                return "LAUNCH"
+                return "SETTINGS" if index == len(GAMES) else "LAUNCH"
         return None
 
 
-BACKGROUND = (46, 64, 60)      # 深灰绿底, 与象牙色卡片拉开层次
-PAPER = (246, 244, 236)        # 象牙色卡片
-INK = (52, 70, 68)
-MUTED = (108, 130, 124)
-TEAL = (74, 145, 135)
-LINE = (188, 205, 196)
-CORAL = (204, 103, 90)
-LIGHT = (228, 235, 229)        # 深底上的正文浅色
-LIGHT_TEAL = (138, 194, 182)   # 深底上的强调浅色
-LIGHT_MUTED = (160, 180, 173)  # 深底上的次要文字
-DARK_LINE = (92, 114, 106)     # 深底上的分隔线
-FOOTER_BG = (56, 76, 69)       # 底部按键栏(深色)
+def apply_theme():
+    """按当前全局风格刷新主界面配色; 在设置里切换风格后再次调用即时生效。"""
+    global BACKGROUND, PAPER, SELECTED, INK, MUTED, TEAL, LINE, CORAL, \
+        LIGHT, LIGHT_TEAL, LIGHT_MUTED, DARK_LINE, FOOTER_BG
+    p = ui_theme.palette()
+    BACKGROUND = p["bg"]       # 页面背景
+    PAPER = p["panel"]         # 卡片
+    SELECTED = p["panel_hi"]   # 选中卡片
+    INK = p["text"]            # 卡片上的正文
+    MUTED = p["sub"]           # 卡片上的次要文字
+    TEAL = p["accent"]         # 主强调(选中框/按钮)
+    LINE = p["deco"]           # 卡片描边
+    CORAL = ui_theme.pick(BACKGROUND, (232, 116, 100))  # 警示/危险色
+    LIGHT = p["text_bg"]       # 背景上的正文
+    LIGHT_TEAL = p["title_bg"]  # 背景上的强调
+    LIGHT_MUTED = p["sub_bg"]  # 背景上的次要文字
+    DARK_LINE = p["line_bg"]   # 背景上的分隔线/装饰点
+    FOOTER_BG = p["hint_bg"]   # 底部按键栏
+
+
+apply_theme()
 DECLARATION_LINES = ("此宝盒仅允许我或我的朋友", "文怡然、文焕然、", "欧泽轩、欧阳沐希使用，", "否则将大祸临头")
 
 
@@ -112,10 +131,12 @@ class LauncherDisplay:
         top, gap, margin = self.section_y + 20, 6, 10
         width = (self.width - 2 * margin - gap) // 2
         rows = (len(GAMES) + 1) // 2
-        height = (self.footer_top - top - 4 - (rows - 1) * gap) // rows
+        height = (self.footer_top - top - 4 - rows * gap) // (rows + 1)  # 多留一行给设置
         self.game_rects = [pygame.Rect(margin + (index % 2) * (width + gap),
                                       top + (index // 2) * (height + gap), width, height)
                            for index in range(len(GAMES))]
+        self.settings_rect = pygame.Rect(margin, top + rows * (height + gap),
+                                         2 * width + gap, height)  # 设置: 通栏一行
         self.buttons = [pygame.Rect(index * self.width // 3, self.footer_top,
                                     (index + 1) * self.width // 3 - index * self.width // 3, 27)
                         for index in range(3)]
@@ -224,9 +245,10 @@ class LauncherDisplay:
             for dx, dy in ((-7, -4), (-2, -7), (3, -7), (8, -4)):
                 pygame.draw.circle(self.screen, PAPER, (center[0] + dx, center[1] + dy), 3)
 
-    def draw_footer(self, confirming, declaration=False):
+    def draw_footer(self, confirming, declaration=False, settings=False):
         pygame.draw.rect(self.screen, FOOTER_BG, (0, self.footer_top, self.width, 27))
         labels = (("", "", "确认") if declaration else
+                  ("上一个", "下一个", "返回") if settings else
                   ("切换", "切换", "确认") if confirming else ("上一项", "下一项", "进入"))
         for label, rect in zip(labels, self.buttons):
             if label:
@@ -234,9 +256,13 @@ class LauncherDisplay:
 
     def draw(self, state):
         self.screen.fill(BACKGROUND)
+        if state.show_settings:
+            self.draw_settings_page()
+            self.draw_footer(False, settings=True)
+            return
         for dot_y in range(10, self.footer_top, 24):
             for dot_x in range(12, self.width, 24):
-                pygame.draw.circle(self.screen, (62, 82, 74), (dot_x, dot_y), 1)
+                pygame.draw.circle(self.screen, DARK_LINE, (dot_x, dot_y), 1)
         size = 38 if self.portrait else 32
         self.draw_logo(10, 7, size)
         self.text("Wonder Box", self.brand_font, LIGHT, (size + 17, 7))
@@ -246,17 +272,17 @@ class LauncherDisplay:
             self.draw_declaration()
             self.draw_footer(False, declaration=True)
             return
-        self.text(state.notice or "全部游戏", self.small_font,
-                  (230, 132, 116) if state.notice else LIGHT_MUTED,
+        self.text(state.notice or "全部游戏", self.small_font, CORAL if state.notice else LIGHT_MUTED,
                   (11, self.section_y))
-        count = "%02d / %02d" % (state.selected + 1, len(GAMES))
+        count = "%02d / %02d" % (state.selected + 1, len(GAMES) + 1)
         count_image = self.small_font.render(count, True, LIGHT_TEAL)
         self.screen.blit(count_image, (self.width - count_image.get_width() - 11, self.section_y))
         for index, (game, rect) in enumerate(zip(GAMES, self.game_rects)):
             selected = index == state.selected
-            pygame.draw.rect(self.screen, (217, 235, 226) if selected else PAPER, rect, border_radius=6)
+            pygame.draw.rect(self.screen, SELECTED if selected else PAPER, rect, border_radius=6)
             pygame.draw.rect(self.screen, TEAL if selected else LINE, rect, 2 if selected else 1, border_radius=6)
-            icon = pygame.Rect(rect.x + 7, rect.centery - 13, 26, 26)
+            chip = min(26, rect.height - 2)
+            icon = pygame.Rect(rect.x + 7, rect.centery - chip // 2, chip, chip)
             self.draw_icon(game, icon)
             text_x = icon.right + 5
             text_width = rect.right - text_x - 4
@@ -266,15 +292,50 @@ class LauncherDisplay:
             text_y = rect.centery - (font.get_height() + self.small_font.get_height()) // 2
             self.text(game.name, font, INK, (text_x, text_y))
             self.text(game.description, self.small_font, MUTED, (text_x, text_y + font.get_height()))
+        rect = self.settings_rect  # 设置卡片(通栏)
+        selected = state.selected == len(GAMES)
+        pygame.draw.rect(self.screen, SELECTED if selected else PAPER, rect, border_radius=6)
+        pygame.draw.rect(self.screen, TEAL if selected else LINE, rect, 2 if selected else 1, border_radius=6)
+        chip = min(26, rect.height - 2)
+        icon = pygame.Rect(rect.x + 7, rect.centery - chip // 2, chip, chip)
+        self.draw_settings_icon(icon)
+        text_x = icon.right + 5
+        font = self.name_fonts[1]
+        text_y = rect.centery - (font.get_height() + self.small_font.get_height()) // 2
+        self.text("设置", font, INK, (text_x, text_y))
+        self.text("界面风格", self.small_font, MUTED, (text_x, text_y + font.get_height()))
         if state.confirming_power:
             self.draw_power_dialog(state)
         self.draw_footer(state.confirming_power)
+
+    def draw_settings_icon(self, rect):
+        pygame.draw.rect(self.screen, TEAL, rect, border_radius=6)
+        center = rect.center
+        pygame.draw.circle(self.screen, PAPER, center, 8, 2)
+        pygame.draw.circle(self.screen, PAPER, center, 3)
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            pygame.draw.line(self.screen, PAPER, (center[0] + dx * 8, center[1] + dy * 8),
+                             (center[0] + dx * 11, center[1] + dy * 11), 2)
+
+    def draw_settings_page(self):
+        self.text("Wonder Box", self.brand_font, LIGHT, (10, 7))
+        self.text("设置", self.chinese_font, LIGHT_TEAL, (11, 30 if self.portrait else 27))
+        pygame.draw.line(self.screen, DARK_LINE, (10, self.section_y - 6), (self.width - 10, self.section_y - 6))
+        panel = pygame.Rect(12, self.section_y + 34, self.width - 24, 72)
+        pygame.draw.rect(self.screen, PAPER, panel, border_radius=8)
+        pygame.draw.rect(self.screen, TEAL, panel, 2, border_radius=8)
+        self.text("界面风格", self.small_font, MUTED, (panel.x + 12, panel.y + 10))
+        self.centered(ui_theme.style_name(), self.dialog_font, INK, panel.center)
+        self.centered("< K1 / K2 切换 >", self.small_font, LIGHT_MUTED,
+                      (self.width // 2, panel.bottom + 16))
+        self.centered("选择后立即保存", self.small_font, LIGHT_MUTED,
+                      (self.width // 2, panel.bottom + 34))
 
     def draw_declaration(self):
         self.centered("使用声明", self.dialog_font, LIGHT, (self.width // 2, self.section_y + 12))
         line_gap = 24 if self.portrait else 22
         for index, line in enumerate(DECLARATION_LINES):
-            color = (230, 132, 116) if index == len(DECLARATION_LINES) - 1 else LIGHT
+            color = CORAL if index == len(DECLARATION_LINES) - 1 else LIGHT
             self.centered(line, self.declaration_font, color,
                           (self.width // 2, self.section_y + 40 + index * line_gap))
         pygame.draw.rect(self.screen, TEAL, self.declaration_button, border_radius=5)
@@ -290,8 +351,7 @@ class LauncherDisplay:
         self.centered("将关闭奇趣宝盒", self.small_font, MUTED, (self.dialog.centerx, self.dialog.y + 60))
         for index, (label, rect) in enumerate(zip(("取消", "关机"), self.power_buttons)):
             selected = index == state.power_selected
-            color = (234, 214, 208) if selected and index == 1 else \
-                    (212, 228, 219) if selected else (240, 240, 234)
+            color = SELECTED if selected else PAPER
             pygame.draw.rect(self.screen, color, rect, border_radius=5)
             pygame.draw.rect(self.screen, CORAL if selected and index == 1 else TEAL if selected else LINE,
                              rect, 2 if selected else 1, border_radius=5)
@@ -369,6 +429,11 @@ def event_action(event, display, state):
             if display.declaration_button.collidepoint(position) or display.buttons[2].collidepoint(position):
                 return "K3"
             return None
+        if state.show_settings:
+            for action, rect in zip(("K1", "K2", "K3"), display.buttons):
+                if rect.collidepoint(position):
+                    return action
+            return None
         for action, rect in zip(("K1", "K2", "K3"), display.buttons):
             if rect.collidepoint(position):
                 return action
@@ -380,6 +445,8 @@ def event_action(event, display, state):
             for index, rect in enumerate(display.game_rects):
                 if rect.collidepoint(position):
                     return "GAME_%d" % index
+            if display.settings_rect.collidepoint(position):
+                return "GAME_%d" % len(GAMES)
     return None
 
 
@@ -398,6 +465,7 @@ class LauncherApp:
     def open(self, after_game=False):
         self.screen = spi_lcd.init()
         self.simulate = spi_lcd.is_simulate()
+        apply_theme()
         self.display = LauncherDisplay(self.screen)
         self.hold = spi_lcd.SimulatedHold("K3", "POWER", QUIT_HOLD_SECONDS)
         self.clock = pygame.time.Clock()
@@ -459,6 +527,12 @@ class LauncherApp:
     def accept_declaration(self):
         self.state.show_declaration = False
 
+    def cycle_style(self, direction):
+        names = ui_theme.STYLE_NAMES
+        index = (names.index(ui_theme.style_name()) + direction) % len(names)
+        ui_theme.set_style(names[index])  # 立即持久化
+        apply_theme()
+
     def run(self):
         while self.running:
             self.display.draw(self.state)
@@ -471,6 +545,18 @@ class LauncherApp:
                 result = self.state.handle_action(action)
                 if result == "ACCEPT_DECLARATION":
                     self.accept_declaration()
+                    break
+                if result == "SETTINGS":
+                    self.state.show_settings = True
+                    break
+                if result == "CLOSE_SETTINGS":
+                    self.state.show_settings = False
+                    break
+                if result == "STYLE_PREV":
+                    self.cycle_style(-1)
+                    break
+                if result == "STYLE_NEXT":
+                    self.cycle_style(1)
                     break
                 if result == "LAUNCH":
                     self.play()

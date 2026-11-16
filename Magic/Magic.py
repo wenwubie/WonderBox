@@ -8,6 +8,7 @@ import time
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))
 from common import spi_lcd
+from common import ui_theme
 
 if spi_lcd.is_simulate():
 	spi_lcd.WINDOW_SCALE = 2
@@ -23,17 +24,19 @@ import pygame  # noqa: E402
 WIDTH, HEIGHT = screen.get_size()
 PORTRAIT = HEIGHT > WIDTH
 
-BG = (15, 44, 38)
-INK = (242, 247, 237)
-MUTED = (181, 209, 193)
-CORAL = (244, 136, 119)
-MINT = (120, 211, 175)
-GOLD = (244, 197, 108)
-PANEL = (30, 72, 57)
-PANEL_SELECTED = (40, 92, 64)
-PANEL_INNER = (19, 55, 44)
-ICON_BG = (57, 115, 84)
-LINE = (101, 158, 124)
+_st = ui_theme.style()  # 全局界面风格
+_mix = lambda a, b: tuple((x + y) // 2 for x, y in zip(a[:3], b[:3]))
+BG = _st["bg"]
+INK = _st["text"]
+MUTED = _st["sub"]
+CORAL = (244, 136, 119)   # 固定暖色(警示)
+MINT = (120, 211, 175)    # 固定薄荷(强调)
+GOLD = (244, 197, 108)    # 固定金色
+PANEL = _st["panel"]
+PANEL_SELECTED = _st["panel_hi"]
+PANEL_INNER = _mix(_st["panel"], _st["bg"])
+ICON_BG = _mix(_st["panel"], MINT)
+LINE = _st["deco"]
 MYSTIC_BG = (18, 15, 31)
 MYSTIC_PANEL = (38, 29, 52)
 MYSTIC_INNER = (27, 22, 43)
@@ -313,8 +316,11 @@ def draw_footer(labels, dark=False, enabled=(True, True, True)):
 			color = ((65, 48, 80) if index == 2 else MYSTIC_PANEL) if dark else \
 				(PANEL_SELECTED if index == 2 else PANEL)
 			border = MYSTIC_LINE if dark else LINE
-			text_color = MYSTIC_GOLD if dark and index == 2 else MYSTIC_MUTED if dark else \
-				(GOLD if index == 2 else MUTED)
+			if dark:
+				text_color = MYSTIC_GOLD if index == 2 else MYSTIC_MUTED
+			else:
+				# 金色/次要文字按按钮底色自适应, 浅底自动换深色
+				text_color = ui_theme.pick(color, GOLD if index == 2 else MUTED)
 		rounded(rect, color, 5, 1, border)
 		image = font_small.render(label, True, text_color)
 		screen.blit(image, (rect.centerx - image.get_width() // 2,
@@ -580,22 +586,23 @@ def draw_love_result(card, page):
 		rect = (12, 54, 60, 84)
 		text_x, text_y, max_w = 12, 156, WIDTH - 24
 	draw_tarot_face(rect, card)
-	page_label = font_small.render("%d / %d" % (page + 1, LOVE_PAGE_COUNT), True, GOLD)
+	gold = ui_theme.pick(BG, GOLD)  # 金色文字按背景自适应, 浅色风格下自动加深
+	page_label = font_small.render("%d / %d" % (page + 1, LOVE_PAGE_COUNT), True, gold)
 	if WIDTH >= 300:
-		screen.blit(font_heading.render(card[0] + " · " + card[1], True, GOLD), (text_x, 59))
+		screen.blit(font_heading.render(card[0] + " · " + card[1], True, gold), (text_x, 59))
 		screen.blit(page_label, (WIDTH - 12 - page_label.get_width(), 64))
 		for label, font, color, y in (("合拍指数", font_small, MUTED, 161),
-								   (str(card[4]) + "%", font_heading, GOLD, 174),
+								   (str(card[4]) + "%", font_heading, gold, 174),
 								   ("仅供趣味参考", font_small, MUTED, 201)):
 			image = font.render(label, True, color)
 			screen.blit(image, (rect[0] + (rect[2] - image.get_width()) // 2, y))
 		bar_x, bar_y, bar_width = rect[0] + 4, 195, rect[2] - 8
 	else:
-		screen.blit(font_heading.render(card[0], True, GOLD), (84, 57))
+		screen.blit(font_heading.render(card[0], True, gold), (84, 57))
 		screen.blit(page_label, (WIDTH - 12 - page_label.get_width(), 62))
 		screen.blit(font_small.render("关键词：" + card[1], True, MUTED), (84, 80))
 		screen.blit(font_small.render("合拍指数", True, MUTED), (84, 105))
-		score = font_heading.render(str(card[4]) + "%", True, GOLD)
+		score = font_heading.render(str(card[4]) + "%", True, gold)
 		screen.blit(score, (WIDTH - 12 - score.get_width(), 99))
 		screen.blit(font_small.render("仅供趣味参考", True, MUTED), (84, 128))
 		bar_x, bar_y, bar_width = 84, 120, WIDTH - 96
@@ -609,7 +616,7 @@ def draw_love_result(card, page):
 		text_y = draw_wrapped(paragraph, text_x, text_y, max_w - font_body.size("。")[0],
 							  font_body, INK, 2)
 		label = paragraph.split("：", 1)[0] + "："
-		screen.blit(font_body.render(label, True, GOLD), (text_x, section_y))
+		screen.blit(font_body.render(label, True, gold), (text_x, section_y))
 		text_y += 4
 	draw_footer(("下一页" if page == 0 else "上一页", "再抽", "返回"))
 
@@ -669,16 +676,17 @@ def draw_zodiac(index, topic, page):
 	pages = zodiac_pages(index, topic)
 	draw_header("星座小档案", "太阳星座 · 仅供趣味")
 	rounded((9, 52, WIDTH - 18, HEIGHT - 80), PANEL, 8, 1, LINE)
-	screen.blit(font_title.render(sign[0], True, GOLD), (18, 56))
+	gold = ui_theme.pick(PANEL, GOLD)  # 金色文字按面板底色自适应
+	screen.blit(font_title.render(sign[0], True, gold), (18, 56))
 	date = font_small.render("约 " + sign[1], True, MUTED)
 	screen.blit(date, (WIDTH - date.get_width() - 18, 62))
 	topic_w = (WIDTH - 44) // len(TOPICS)
 	for i, label in enumerate(TOPICS):
 		x = 17 + i * (topic_w + 3)
 		active = i == topic
-		rounded((x, 82, topic_w, 21), PANEL_SELECTED if active else PANEL_INNER,
-				7, 1 if active else 0, GOLD if active else None)
-		image = font_small.render(label, True, GOLD if active else MUTED)
+		fill = PANEL_SELECTED if active else PANEL_INNER
+		rounded((x, 82, topic_w, 21), fill, 7, 1 if active else 0, GOLD if active else None)
+		image = font_small.render(label, True, ui_theme.pick(fill, GOLD if active else MUTED))
 		screen.blit(image, (x + (topic_w - image.get_width()) // 2, 86))
 	heading = ("性格特点", "感情相处", "工作学习", "人际关系", "你的天赋")[topic]
 	screen.blit(font_heading.render(heading, True, INK), (18, 108))
@@ -686,7 +694,7 @@ def draw_zodiac(index, topic, page):
 	screen.blit(page_label, (WIDTH - 18 - page_label.get_width(), 113))
 	text_y = 131
 	for line in pages[page]:
-		color = GOLD if line.startswith(("合拍：", "需磨合：")) else INK
+		color = gold if line.startswith(("合拍：", "需磨合：")) else INK
 		screen.blit(font_body.render(line, True, color), (18, text_y))
 		text_y += font_body.get_linesize() + 2
 	draw_footer(("下一页" if page + 1 < len(pages) else "换主题", "下星座", "返回"))

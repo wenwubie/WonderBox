@@ -13,6 +13,7 @@ import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
+sys.path.insert(0, ROOT_DIR)
 sys.path.insert(0, os.path.join(ROOT_DIR, "Lucky Wheel"))
 wheel_support = importlib.import_module("lucky_wheel")
 GPIOButtons = wheel_support.GPIOButtons
@@ -20,6 +21,8 @@ event_action = wheel_support.event_action
 present_frame = wheel_support.present_frame
 spi_lcd = wheel_support.spi_lcd
 wrap_text = wheel_support.wrap_text
+
+from common import ui_theme
 
 import pygame
 
@@ -863,13 +866,14 @@ class BrainGame:
 				self.advance()
 
 
-BACKGROUND = (242, 248, 245)
-INK = (38, 59, 57)
-MUTED = (97, 121, 116)
-HEADER = (36, 82, 77)
-PAPER = (255, 255, 252)
-LINE = (203, 222, 214)
-GOLD = (246, 191, 67)
+_st = ui_theme.style()  # 全局界面风格
+BACKGROUND = _st["bg"]
+INK = _st["text"]
+MUTED = _st["sub"]
+HEADER = _st["hint_bg"]
+PAPER = _st["panel"]
+LINE = _st["deco"]
+GOLD = (246, 191, 67)   # 固定金色(奖励)
 PLAYER_COLORS = ((218, 91, 73), (45, 129, 175))
 ANSWER_COLORS = ((218, 91, 73), (50, 151, 137), (72, 131, 190))
 CATEGORY_COLORS = {
@@ -947,21 +951,22 @@ class BrainDisplay:
 
 	def draw_header(self, game):
 		pygame.draw.rect(self.screen, HEADER, (0, 0, self.width, 31))
-		self.screen.blit(self.title_font.render("头脑挑战", True, PAPER), (10, 4))
+		self.screen.blit(self.title_font.render("头脑挑战", True, ui_theme.readable(HEADER)), (10, 4))
 		label = "%d / %d" % (game.index + 1, len(game.questions)) if game.phase in ("answer", "feedback") else "10题"
 		badge = pygame.Rect(self.width - 60, 5, 51, 21)
 		pygame.draw.rect(self.screen, GOLD, badge, border_radius=5)
-		self.centered(label, self.small_font, INK, badge.center)
+		self.centered(label, self.small_font, ui_theme.pick(GOLD, INK), badge.center)
 		for index, rect in enumerate(self.scores):
 			pygame.draw.rect(self.screen, PLAYER_COLORS[index], rect, border_radius=6)
 			if game.active_player == index and game.phase in ("ready", "answer", "feedback"):
 				pygame.draw.rect(self.screen, GOLD, rect, 2, border_radius=6)
-			self.centered("玩家%d" % (index + 1), self.status_font, PAPER, rect.center)
+			self.centered("玩家%d" % (index + 1), self.status_font,
+						  ui_theme.readable(PLAYER_COLORS[index]), rect.center)
 		if game.phase == "answer":
 			remaining = max(0, math.ceil(QUESTION_SECONDS - game.elapsed))
 			color = PLAYER_COLORS[0] if remaining <= 5 else HEADER
 			pygame.draw.circle(self.screen, color, (self.width // 2, 47), 13)
-			self.centered(str(remaining), self.number_font, PAPER, (self.width // 2, 47))
+			self.centered(str(remaining), self.number_font, ui_theme.readable(color), (self.width // 2, 47))
 		else:
 			self.centered("VS", self.small_font, MUTED, (self.width // 2, 47))
 
@@ -1022,11 +1027,12 @@ class BrainDisplay:
 			pygame.draw.rect(self.screen, LINE, rect, 1, border_radius=5)
 			badge_center = (rect.x + 17, rect.centery)
 			pygame.draw.circle(self.screen, ANSWER_COLORS[index], badge_center, 10)
-			self.centered(str(index + 1), self.number_font, PAPER, badge_center)
+			self.centered(str(index + 1), self.number_font,
+						  ui_theme.readable(ANSWER_COLORS[index]), badge_center)
 			font, lines = self.layout_option(game.question.choices[index], rect)
 			top = rect.centery - len(lines) * font.get_linesize() // 2
 			for line_index, line in enumerate(lines):
-				text = font.render(line, True, INK)
+				text = font.render(line, True, ui_theme.pick(fill, INK))
 				self.screen.blit(text, (rect.x + 34, top + line_index * font.get_linesize()))
 
 	def status(self, game):
@@ -1045,7 +1051,7 @@ class BrainDisplay:
 					  PLAYER_COLORS[game.active_player], (center_x, heading_y))
 		pygame.draw.circle(self.screen, LINE, (center_x, clock_y), 32, 4)
 		pygame.draw.circle(self.screen, PAPER, (center_x, clock_y), 25)
-		self.centered("%d" % QUESTION_SECONDS, self.heading_font, HEADER, (center_x, clock_y))
+		self.centered("%d" % QUESTION_SECONDS, self.heading_font, ui_theme.pick(PAPER, MUTED), (center_x, clock_y))
 		self.centered("每题限时 %d 秒" % QUESTION_SECONDS, self.status_font, MUTED,
 					  (center_x, 229 if self.portrait else 181))
 
@@ -1098,7 +1104,7 @@ class BrainDisplay:
 			enabled = (False, False, False)
 		for index, rect in enumerate(self.buttons):
 			color = ANSWER_COLORS[index] if enabled[index] else (214, 225, 219)
-			text_color = PAPER if enabled[index] else (83, 92, 89)
+			text_color = ui_theme.readable(ANSWER_COLORS[index]) if enabled[index] else (83, 92, 89)
 			pygame.draw.rect(self.screen, color, rect, border_radius=5)
 			self.centered(labels[index], self.button_font, text_color, rect.center)
 

@@ -10,6 +10,7 @@ import time
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))
 from common import spi_lcd
+from common import ui_theme
 
 import pygame
 
@@ -174,14 +175,29 @@ class LuckyWheel:
 				self.task = self.rng.randrange(len(GAMES[self.selected][2]))
 
 
-BACKGROUND = (244, 249, 246)
-INK = (43, 61, 64)
-MUTED = (102, 122, 119)
-PAPER = (255, 254, 248)
-OUTLINE = (211, 226, 217)
-CORAL = (226, 100, 88)
-TEAL = (49, 146, 151)
-YELLOW = (255, 205, 99)
+BACKGROUND = None  # 占位, 下方按全局风格填充
+INK = None
+MUTED = None
+PAPER = None
+OUTLINE = None
+CORAL = (226, 100, 88)   # 固定暖色(警示/返回), 不随风格变
+TEAL = None
+YELLOW = (255, 205, 99)  # 固定金色(转盘高亮)
+
+
+def apply_theme():
+    """按全局界面风格刷新配色(common/ui_theme.py)。"""
+    global BACKGROUND, INK, MUTED, PAPER, OUTLINE, TEAL
+    st = ui_theme.style()
+    BACKGROUND = st["bg"]
+    INK = st["text"]
+    MUTED = st["sub"]
+    PAPER = st["panel"]
+    OUTLINE = st["deco"]
+    TEAL = st["accent"]
+
+
+apply_theme()
 
 
 def point_on_wheel(center, radius, angle):
@@ -244,13 +260,15 @@ class WheelDisplay:
 	def draw_header(self):
 		self.text("幸运转盘", self.title_font, INK, (12, 7))
 		tag = pygame.Rect(self.width - 62, 9, 50, 20)
-		pygame.draw.rect(self.screen, (255, 231, 173), tag, border_radius=6)
-		image = self.small_font.render("一起玩", True, INK)
+		tag_fill = (255, 231, 173)
+		pygame.draw.rect(self.screen, tag_fill, tag, border_radius=6)
+		image = self.small_font.render("一起玩", True, ui_theme.pick(tag_fill, INK))
 		self.screen.blit(image, image.get_rect(center=tag.center))
 		pygame.draw.line(self.screen, OUTLINE, (12, 36), (self.width - 12, 36))
 
-	def draw_symbol(self, label, position):
+	def draw_symbol(self, label, position, color=None):
 		x, y = position
+		color = INK if color is None else color
 		if label == "节奏":
 			pygame.draw.circle(self.screen, INK, (x - 4, y + 3), 2)
 			pygame.draw.circle(self.screen, INK, (x + 3, y + 1), 2)
@@ -291,12 +309,14 @@ class WheelDisplay:
 			points = [center] + [point_on_wheel(center, radius, start + SECTOR_ANGLE * step / 20)
 								 for step in range(21)]
 			pygame.draw.polygon(self.screen, color, points)
-		for index, (label, _, _) in enumerate(GAMES):
+		for index, (label, color, _) in enumerate(GAMES):
 			start = wheel.angle + index * SECTOR_ANGLE
 			pygame.draw.line(self.screen, PAPER, center, point_on_wheel(center, radius, start), 2)
 			position = point_on_wheel(center, radius * 0.65, start + SECTOR_ANGLE / 2)
-			self.draw_symbol(label, (position[0], position[1] - 8))
-			image = self.wheel_font.render(label, True, INK)
+			# 扇区底色固定, 文字/符号颜色按扇区亮度自适应
+			label_color = ui_theme.pick(color, INK)
+			self.draw_symbol(label, (position[0], position[1] - 8), label_color)
+			image = self.wheel_font.render(label, True, label_color)
 			self.screen.blit(image, image.get_rect(center=(position[0], position[1] + 7)))
 		pygame.draw.circle(self.screen, PAPER, center, 16)
 		pygame.draw.circle(self.screen, (225, 175, 74), center, 16, 1)
@@ -342,7 +362,7 @@ class WheelDisplay:
 		colors = ((248, 169, 138), (124, 202, 190), (255, 211, 117))
 		for index, rect in enumerate(self.buttons):
 			color = colors[index] if enabled[index] else (229, 235, 230)
-			text_color = INK if enabled[index] else (83, 92, 89)
+			text_color = ui_theme.pick(color, INK) if enabled[index] else (83, 92, 89)
 			pygame.draw.rect(self.screen, color, rect, border_radius=5)
 			image = self.button_font.render(labels[index], True, text_color)
 			self.screen.blit(image, image.get_rect(center=rect.center))
