@@ -1,7 +1,9 @@
 {
- "order": "正序",
- "style": "夜空",
+ "order": "随机",
  "generations": [
+  1,
+  2,
+  3,
   4
  ]
 }

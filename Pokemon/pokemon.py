@@ -103,8 +103,12 @@ def menu_counts(settings, discovered):
     return len(visible), len(visible) - found, found
 
 
+_last_random_order = None
+
+
 def build_list(mode, settings, discovered):
     """按世代和发现状态过滤，并按设置排序。mode: all / unseen / found"""
+    global _last_random_order
     lst = generation_pokemon(settings)
     if mode == "found":
         lst = [pokemon for pokemon in lst if pokemon["id"] in discovered]
@@ -114,7 +118,12 @@ def build_list(mode, settings, discovered):
     if order == "倒序":
         lst.reverse()
     elif order == "随机":
-        random.shuffle(lst)
+        random.SystemRandom().shuffle(lst)
+        current_order = tuple(pokemon["id"] for pokemon in lst)
+        if len(lst) > 1 and current_order == _last_random_order:
+            lst.append(lst.pop(0))
+            current_order = tuple(pokemon["id"] for pokemon in lst)
+        _last_random_order = current_order
     return lst
 
 

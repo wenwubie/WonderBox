@@ -169,7 +169,7 @@ class ChallengeWheel:
 			self.phase = "spinning"
 			self.selected = None
 			self.task = None
-		elif action == "K2" and self.phase == "spinning":
+		elif action == "K1" and self.phase == "spinning":
 			self.phase = "slowing"
 			self.stop_angle = self.angle
 			self.stop_speed = self.speed
@@ -216,9 +216,9 @@ class DuelGame:
 
 	def handle_action(self, action):
 		if self.view == "wheel":
-			if action == "K3":
+			if action == "K2":
 				self.new_round()
-			else:
+			elif action == "K1":
 				self.wheel.handle_action(action)
 		elif action in ("K1", "K2"):
 			self.dice[0 if action == "K1" else 1].press()
@@ -550,8 +550,10 @@ class DuelDisplay:
 			enabled = (game.dice[0].phase != "locked", game.dice[1].phase != "locked", both_locked)
 		else:
 			wheel = game.wheel
-			labels = ("再转" if wheel.phase == "result" else "开始", "停下", "返回")
-			enabled = (wheel.phase in ("ready", "result"), wheel.phase == "spinning", True)
+			label = {"ready": "开始", "spinning": "停下", "slowing": "减速中",
+					 "result": "再转"}[wheel.phase]
+			labels = (label, "返回", "")
+			enabled = (wheel.phase != "slowing", True, False)
 		colors = ((251, 184, 164), (160, 200, 239), GOLD)
 		for index, rect in enumerate(self.buttons):
 			color = colors[index] if enabled[index] else (221, 229, 231)
@@ -594,7 +596,7 @@ def main():
 		hold = spi_lcd.SimulatedHold("K3", "BACK", wheel_support.QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
-		print("骰子对决已启动：K1、K2 控制各自的骰子，K3 进入挑战或开始下一轮；长按 K3 返回或退出。")
+		print("骰子对决已启动：K1、K2 控制骰子，K3 进入挑战；轮盘中 K1 启动/停止，K2 返回，K3 无功能。")
 		while running:
 			elapsed = clock.tick(30) / 1000.0
 			if buttons is None:
@@ -611,7 +613,7 @@ def main():
 					if game.view != "wheel":
 						running = False
 						break
-					action = "K3"
+					continue
 				game.handle_action(action)
 			if not running:
 				break

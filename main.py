@@ -29,6 +29,19 @@ class Game:
     color: tuple[int, int, int]
 
 
+@dataclass(frozen=True)
+class GameCategory:
+    name: str
+    description: str
+    directory: str
+    icon: str
+    color: tuple[int, int, int]
+    games: tuple[Game, ...]
+
+    def as_game(self):
+        return Game(self.name, self.description, self.directory, self.icon, self.color)
+
+
 GAMES = (
     Game("宝可梦图鉴", "图鉴探索", "Pokemon/pokemon.py", "pokemon", (224, 95, 78)),
     Game("头脑挑战", "双人答题", "Brain Challenge/brain_challenge.py", "brain", (66, 153, 139)),
@@ -38,7 +51,17 @@ GAMES = (
     Game("星愿占卜屋", "星座占卜", "Magic/Magic.py", "magic", (172, 125, 176)),
     Game("诗词大赛", "唐诗宋词", "Poetry Quest/poetry.py", "poetry", (186, 91, 73)),
     Game("宠物乐园", "萌宠养成", "Virtual Pet/virtual_pet.py", "pet", (87, 158, 120)),
+    Game("粘猴", "搭桥闯关", "Mini Games/Sticky Monkey/sticky_monkey.py", "monkey", (126, 177, 82)),
 )
+
+GAME_CATEGORIES = (
+    GameCategory("小游戏", "1 款游戏", "Mini Games", "minigames", (126, 177, 82), (GAMES[-1],)),
+)
+CATEGORIZED_PATHS = {game.path for category in GAME_CATEGORIES for game in category.games}
+DIRECT_GAMES = tuple(game for game in GAMES if game.path not in CATEGORIZED_PATHS)
+HOME_GAMES = DIRECT_GAMES + tuple(category.as_game() for category in GAME_CATEGORIES)
+BACK_ENTRY = Game("返回", "返回全部游戏", "", "back", (115, 130, 137))
+MINI_GAMES_HOME_INDEX = len(DIRECT_GAMES)
 
 
 class LauncherState:
@@ -49,6 +72,48 @@ class LauncherState:
         self.notice = ""
         self.show_declaration = show_declaration
         self.show_settings = False
+        self.show_category = None
+        self.return_selection = MINI_GAMES_HOME_INDEX
+
+    @property
+    def visible_games(self):
+        if self.show_category is None:
+            return HOME_GAMES
+        return GAME_CATEGORIES[self.show_category].games + (BACK_ENTRY,)
+
+    @property
+    def settings_index(self):
+        return len(HOME_GAMES)
+
+    @property
+    def selected_game(self):
+        if self.show_category is not None:
+            category_games = GAME_CATEGORIES[self.show_category].games
+            return category_games[self.selected] if self.selected < len(category_games) else None
+        return DIRECT_GAMES[self.selected] if self.selected < len(DIRECT_GAMES) else None
+
+    def select_visible(self, index):
+        if self.show_category is None:
+            if index < len(DIRECT_GAMES):
+                self.selected = index
+                return "LAUNCH"
+            category_index = index - len(DIRECT_GAMES)
+            if 0 <= category_index < len(GAME_CATEGORIES):
+                self.return_selection = index
+                self.show_category = category_index
+                self.selected = 0
+                return "OPEN_CATEGORY"
+            return None
+
+        category = GAME_CATEGORIES[self.show_category]
+        if index < len(category.games):
+            self.selected = index
+            return "LAUNCH"
+        if index == len(category.games):
+            self.show_category = None
+            self.selected = self.return_selection
+            return "CLOSE_CATEGORY"
+        return None
 
     def handle_action(self, action):
         if self.show_declaration:
@@ -77,15 +142,23 @@ class LauncherState:
                     return "SHUTDOWN"
                 self.confirming_power = False
         elif action in ("K1", "K2"):
-            self.selected = (self.selected + (-1 if action == "K1" else 1)) % (len(GAMES) + 1)
+            item_count = len(self.visible_games)
+            if self.show_category is None:
+                item_count += 1
+            self.selected = (self.selected + (-1 if action == "K1" else 1)) % item_count
             self.notice = ""
         elif action == "K3":
-            return "SETTINGS" if self.selected == len(GAMES) else "LAUNCH"
+            if self.show_category is None and self.selected == self.settings_index:
+                return "SETTINGS"
+            return self.select_visible(self.selected)
         elif action and action.startswith("GAME_"):
             index = int(action[5:])
-            if 0 <= index <= len(GAMES):
+            if self.show_category is None and index == self.settings_index:
                 self.selected = index
-                return "SETTINGS" if index == len(GAMES) else "LAUNCH"
+                return "SETTINGS"
+            if 0 <= index < len(self.visible_games):
+                self.selected = index
+                return self.select_visible(index)
         return None
 
 
@@ -121,7 +194,7 @@ class LauncherDisplay:
         self.brand_font = spi_lcd.load_font(19 if self.portrait else 17)
         self.brand_font.set_bold(True)
         self.chinese_font = spi_lcd.load_font(14 if self.portrait else 13)
-        self.name_fonts = [spi_lcd.load_font(size) for size in (15, 14, 13, 12)]
+        self.name_fonts = [spi_lcd.load_font(size) for size in (15, 14, 13, 12, 11, 10)]
         self.small_font = spi_lcd.load_font(12)
         self.button_font = spi_lcd.load_font(13)
         self.dialog_font = spi_lcd.load_font(19)
@@ -130,12 +203,14 @@ class LauncherDisplay:
         self.section_y = 62 if self.portrait else 49
         self.footer_top = self.height - 27
         top, gap, margin = self.section_y + 20, 6, 10
-        width = (self.width - 2 * margin - gap) // 2
-        rows = (len(GAMES) + 1) // 2
+        columns = 2 if self.portrait else 3
+        width = (self.width - 2 * margin - (columns - 1) * gap) // columns
+        rows = (len(GAMES) + columns - 1) // columns
         height = (self.footer_top - top - 4 - (rows - 1) * gap) // rows  # 全部高度给游戏卡片
-        self.game_rects = [pygame.Rect(margin + (index % 2) * (width + gap),
-                                      top + (index // 2) * (height + gap), width, height)
+        self.game_rects = [pygame.Rect(margin + (index % columns) * (width + gap),
+                          top + (index // columns) * (height + gap), width, height)
                            for index in range(len(GAMES))]
+        self.home_game_rects = self.game_rects.copy()
         # 设置: 主界面右上角的小齿轮(与"奇趣宝盒"文字行平行对齐)
         subtitle_y = 30 if self.portrait else 27
         gear_size = 22
@@ -250,6 +325,25 @@ class LauncherDisplay:
             pygame.draw.ellipse(self.screen, PAPER, (center[0] - 7, center[1], 14, 10))
             for dx, dy in ((-7, -4), (-2, -7), (3, -7), (8, -4)):
                 pygame.draw.circle(self.screen, PAPER, (center[0] + dx, center[1] + dy), 3)
+        elif game.icon == "monkey":
+            pygame.draw.circle(self.screen, (112, 67, 39), center, 10)
+            pygame.draw.circle(self.screen, (255, 220, 167), (center[0] + 2, center[1] + 2), 7)
+            pygame.draw.circle(self.screen, PAPER, (center[0] - 2, center[1] - 2), 2)
+            pygame.draw.circle(self.screen, PAPER, (center[0] + 4, center[1] - 2), 2)
+            pygame.draw.line(self.screen, (244, 181, 79), (center[0] - 9, center[1] + 8),
+                             (center[0] + 10, center[1] + 8), 2)
+        elif game.icon == "minigames":
+            for dx, dy, color in ((-5, -4, PAPER), (4, 3, (255, 213, 105))):
+                tile = pygame.Rect(center[0] + dx - 5, center[1] + dy - 5, 10, 10)
+                pygame.draw.rect(self.screen, color, tile, border_radius=2)
+                pygame.draw.rect(self.screen, INK, tile, 1, border_radius=2)
+        elif game.icon == "back":
+            pygame.draw.line(self.screen, PAPER, (center[0] + 7, center[1]),
+                             (center[0] - 7, center[1]), 2)
+            pygame.draw.line(self.screen, PAPER, (center[0] - 7, center[1]),
+                             (center[0] - 1, center[1] - 6), 2)
+            pygame.draw.line(self.screen, PAPER, (center[0] - 7, center[1]),
+                             (center[0] - 1, center[1] + 6), 2)
 
     def draw_footer(self, confirming, declaration=False, settings=False):
         pygame.draw.rect(self.screen, FOOTER_BG, (0, self.footer_top, self.width, 27))
@@ -279,12 +373,30 @@ class LauncherDisplay:
             self.draw_declaration()
             self.draw_footer(False, declaration=True)
             return
-        self.text(state.notice or ("界面风格 · 设置" if state.selected == len(GAMES) else "全部游戏"),
+        if state.show_category is None:
+            self.game_rects = self.home_game_rects
+        else:
+            entries_count = len(state.visible_games)
+            margin, gap = 16, 10
+            top = self.section_y + 28
+            width = self.width - margin * 2
+            height = (self.footer_top - top - gap * (entries_count - 1)) // entries_count
+            self.game_rects = [pygame.Rect(margin, top + index * (height + gap), width, height)
+                               for index in range(entries_count)]
+        if state.show_category is None:
+            section_title = "界面风格 · 设置" if state.selected == state.settings_index else "全部游戏"
+            entries = state.visible_games
+            count_total = len(entries) + 1
+        else:
+            section_title = GAME_CATEGORIES[state.show_category].name
+            entries = state.visible_games
+            count_total = len(entries)
+        self.text(state.notice or section_title,
                   self.small_font, CORAL if state.notice else LIGHT_MUTED, (11, self.section_y))
-        count = "%02d / %02d" % (state.selected + 1, len(GAMES) + 1)
+        count = "%02d / %02d" % (state.selected + 1, count_total)
         count_image = self.small_font.render(count, True, LIGHT_TEAL)
         self.screen.blit(count_image, (self.width - count_image.get_width() - 11, self.section_y))
-        for index, (game, rect) in enumerate(zip(GAMES, self.game_rects)):
+        for index, (game, rect) in enumerate(zip(entries, self.game_rects)):
             selected = index == state.selected
             pygame.draw.rect(self.screen, SELECTED if selected else PAPER, rect, border_radius=6)
             pygame.draw.rect(self.screen, TEAL if selected else LINE, rect, 2 if selected else 1, border_radius=6)
@@ -299,10 +411,24 @@ class LauncherDisplay:
             text_y = rect.centery - (font.get_height() + self.small_font.get_height()) // 2
             self.text(game.name, font, INK, (text_x, text_y))
             self.text(game.description, self.small_font, MUTED, (text_x, text_y + font.get_height()))
-        self.draw_gear(self.settings_rect, state.selected == len(GAMES))
+        if state.show_category is None:
+            self.draw_gear(self.settings_rect, state.selected == state.settings_index)
         if state.confirming_power:
             self.draw_power_dialog(state)
         self.draw_footer(state.confirming_power)
+
+    def draw_launching(self, state, game_name):
+        self.draw(state)
+        shade = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        shade.fill((15, 31, 37, 156))
+        self.screen.blit(shade, (0, 0))
+        width, height = min(self.width - 32, 220), 86
+        panel = pygame.Rect((self.width - width) // 2, (self.footer_top - height) // 2,
+                            width, height)
+        pygame.draw.rect(self.screen, PAPER, panel, border_radius=7)
+        pygame.draw.rect(self.screen, TEAL, panel, 2, border_radius=7)
+        self.centered("正在进入", self.dialog_font, INK, (panel.centerx, panel.y + 27))
+        self.centered(game_name, self.small_font, MUTED, (panel.centerx, panel.y + 60))
 
     def draw_gear(self, rect, selected):
         """主界面右上角的设置齿轮(齿盘+8齿+中心孔), 尺寸随 rect 自适应。"""
@@ -453,11 +579,11 @@ def event_action(event, display, state):
                 if rect.collidepoint(position):
                     return action
         else:
-            for index, rect in enumerate(display.game_rects):
+            for index, rect in enumerate(display.game_rects[:len(state.visible_games)]):
                 if rect.collidepoint(position):
                     return "GAME_%d" % index
-            if display.settings_rect.collidepoint(position):
-                return "GAME_%d" % len(GAMES)
+            if state.show_category is None and display.settings_rect.collidepoint(position):
+                return "GAME_%d" % state.settings_index
     return None
 
 
@@ -521,8 +647,13 @@ class LauncherApp:
         return actions
 
     def play(self):
-        game = GAMES[self.state.selected]
+        game = self.state.selected_game
+        if game is None:
+            return
         simulate, portrait = self.simulate, self.display.portrait
+        if game.name == "诗词大赛":
+            self.display.draw_launching(self.state, game.name)
+            spi_lcd.present(poll_events=False)
         self.close()
         notice = ""
         try:
@@ -562,6 +693,8 @@ class LauncherApp:
                     break
                 if result == "CLOSE_SETTINGS":
                     self.state.show_settings = False
+                    break
+                if result in ("OPEN_CATEGORY", "CLOSE_CATEGORY"):
                     break
                 if result == "STYLE_PREV":
                     self.cycle_style(-1)

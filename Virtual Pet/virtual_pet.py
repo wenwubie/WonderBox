@@ -40,13 +40,20 @@ class Species:
 
 
 SPECIES = (
-	Species("capybara", "卡皮巴拉", "温柔的小伙伴", (188, 135, 101)),
-	Species("dinosaur", "小恐龙", "爱冒险的宝宝", (101, 190, 149)),
+	Species("capybara", "小火马", "鬃毛燃着火焰的活力伙伴", (232, 139, 93), "小火马.png"),
+	Species("dinosaur", "头盖龙", "勇敢的幼年恐龙伙伴", (101, 151, 190), "头盖龙.png"),
 	Species("pikachu", "皮卡丘", "电力满满", (242, 188, 53), "皮卡丘.png"),
 	Species("eevee", "伊布", "毛茸茸的朋友", (190, 131, 79), "伊布.png"),
 	Species("psyduck", "可达鸭", "呆萌小伙伴", (236, 190, 75), "可达鸭.png"),
 	Species("bulbasaur", "妙蛙种子", "喜欢晒太阳", (85, 177, 152), "妙蛙种子.png"),
 	Species("charmander", "小火龙", "暖暖的小伙伴", (225, 133, 80), "小火龙.png"),
+	Species("ninetales", "九尾狐", "九条尾巴的守护伙伴", (235, 174, 94), "九尾.png"),
+	Species("fire_snake", "哈克龙", "优雅灵动的飞蛇伙伴", (120, 166, 236), "哈克龙.png"),
+	Species("shinx", "小电猫", "耳尖带电的小猫伙伴", (103, 164, 221), "小猫怪.png"),
+	Species("rayquaza", "烈空坐", "翱翔天际的威猛龙伙伴", (88, 174, 143), "烈空坐.png"),
+	Species("lucario", "路卡利欧", "敏捷勇敢的波导伙伴", (91, 147, 195), "路卡利欧.png"),
+	Species("pachirisu", "帕奇利兹", "活泼可爱的小电松鼠", (124, 184, 224), "帕奇利兹.png"),
+	Species("buneary", "长耳兔", "软绵绵的长耳兔伙伴", (198, 155, 133), "长耳兔.png"),
 	Species("teto", "重音Teto", "爱唱歌的伙伴", (211, 100, 105)),
 )
 SPECIES_BY_KEY = {species.key: species for species in SPECIES}
@@ -69,13 +76,20 @@ DAILY_TASKS = (("feed", "好好吃饭", 0, 1, 1), ("pat", "温柔摸摸", 1, 1, 
 			   ("explore", "一起出游", 1, 2, 3))
 MAX_FOOD = 99
 SKILLS = {
-	"capybara": (("温柔贴贴", "heart"), ("泡泡雨", "water"), ("花花祝福", "flower")),
+	"capybara": (("烈焰鬃毛", "fire"), ("火花冲刺", "dash"), ("跃动火环", "star")),
 	"dinosaur": (("蹦蹦跳", "dash"), ("勇气星星", "star"), ("小小火花", "fire")),
 	"pikachu": (("电光一闪", "dash"), ("十万伏特", "electric"), ("打雷", "thunder")),
 	"eevee": (("摇尾巴", "heart"), ("电光一闪", "dash"), ("高速星星", "star")),
 	"psyduck": (("水枪", "water"), ("念力", "star"), ("泡泡光线", "bubbles")),
 	"bulbasaur": (("藤鞭", "leaf"), ("飞叶快刀", "leaf"), ("阳光烈焰", "star")),
 	"charmander": (("火花", "fire"), ("喷射火焰", "fire"), ("龙之波动", "star")),
+	"ninetales": (("狐火", "fire"), ("九尾幻光", "star"), ("守护火环", "thunder")),
+	"fire_snake": (("龙息", "fire"), ("旋风摆尾", "dash"), ("鳞光守护", "star")),
+	"shinx": (("电光一闪", "dash"), ("闪电爪", "electric"), ("雷鸣伙伴", "thunder")),
+	"rayquaza": (("龙之波动", "star"), ("天空俯冲", "dash"), ("苍穹雷击", "thunder")),
+	"lucario": (("波导弹", "electric"), ("骨棒连击", "dash"), ("钢拳冲击", "thunder")),
+	"pachirisu": (("电光火花", "electric"), ("蹦蹦尾击", "dash"), ("闪电星星", "star")),
+	"buneary": (("蹦蹦踢", "dash"), ("棉花糖心", "heart"), ("月光跃舞", "star")),
 	"teto": (("小音符", "music"), ("旋转旋律", "music"), ("心动演唱会", "heart")),
 }
 
@@ -1079,6 +1093,64 @@ class PetArt:
 			bob = -round(abs(motion) * min(4, size // 25))
 		return pygame.transform.rotozoom(image, angle, 0.92), sway, bob
 
+	def draw_species_motion(self, surface, species, rect, now, kind, variant):
+		size = min(rect.width, rect.height)
+		center_x, center_y = rect.center
+		active = kind in ("play", "explore", "skill")
+		phase = now * (9 if active else 4) + variant * 0.7
+		radius = max(2, size // 30)
+		if species.key == "capybara":
+			for index in range(3):
+				x = center_x - size // 5 + index * size // 6
+				y = rect.top + size // 7 + round(math.sin(phase + index) * size / 28)
+				height = max(5, size // 8 + round(math.sin(phase * 1.4 + index) * size / 24))
+				flame = ((x, y + height), (x - radius, y + height // 2),
+						 (x - radius // 2, y), (x, y + height // 3),
+						 (x + radius, y - 1), (x + radius, y + height))
+				pygame.draw.polygon(surface, (239, 112, 62), flame)
+				pygame.draw.line(surface, (255, 222, 105), (x, y + height - 1),
+							 (x, y + height // 3), max(1, radius // 2))
+		elif species.key == "dinosaur":
+			step = abs(math.sin(phase))
+			for side in (-1, 1):
+				x = center_x + side * size // 5
+				y = rect.bottom - size // 8 - round(step * size / 18)
+				pygame.draw.ellipse(surface, (212, 184, 137),
+								(x - radius * 2, y, radius * 4, max(2, radius)))
+				pygame.draw.line(surface, (244, 224, 177),
+							 (x - radius * 2, y + radius), (x + radius * 2, y + radius), 1)
+		elif species.key in ("rayquaza", "lucario"):
+			orbit = pygame.Rect(0, 0, size * 4 // 5, size * 3 // 5)
+			orbit.center = (center_x, center_y)
+			color = (95, 220, 166) if species.key == "rayquaza" else (93, 177, 235)
+			start = phase % math.tau
+			pygame.draw.arc(surface, color, orbit, start, start + math.pi * 1.35, max(2, radius // 2))
+			orbital_x = center_x + round(math.cos(phase) * orbit.width / 2)
+			orbital_y = center_y + round(math.sin(phase) * orbit.height / 2)
+			pygame.draw.circle(surface, (210, 248, 231), (orbital_x, orbital_y), radius)
+		elif species.key in ("ninetales", "fire_snake"):
+			for index in range(3):
+				angle = phase + index * math.tau / 3
+				x = center_x + round(math.cos(angle) * size * 0.36)
+				y = center_y + round(math.sin(angle) * size * 0.34)
+				color = (255, 215, 104) if species.key == "ninetales" else (168, 224, 245)
+				pygame.draw.circle(surface, color, (x, y), radius)
+				pygame.draw.circle(surface, (255, 250, 224), (x, y), max(1, radius // 2))
+		elif species.key in ("shinx", "pachirisu"):
+			for side in (-1, 1):
+				x = center_x + side * size // 3 + round(math.sin(phase + side) * radius)
+				y = center_y + round(math.cos(phase * 1.3 + side) * size / 4)
+				bolt = ((x, y - radius * 2), (x - radius, y),
+						 (x, y), (x - radius, y + radius * 2))
+				pygame.draw.lines(surface, (255, 220, 92), False, bolt, max(1, radius // 2))
+		elif species.key == "buneary":
+			for side in (-1, 1):
+				x = center_x + side * size // 5
+				y = rect.top + size // 10 + round(math.sin(phase + side) * size / 20)
+				pygame.draw.arc(surface, (248, 231, 220),
+								(x - radius * 2, y - radius, radius * 4, radius * 3), 0, math.pi, 2)
+				pygame.draw.circle(surface, (255, 244, 224), (x, y), max(1, radius // 2))
+
 	def draw(self, surface, species, rect, now, sleeping=False, accessory="none", activity=None, dirt=0):
 		size = max(24, min(rect.width, rect.height) - 8)
 		blink = sleeping or now % 4.0 < 0.12
@@ -1112,6 +1184,7 @@ class PetArt:
 		if effect in ("explore", "dash"):
 			self.draw_effect(surface, effect, rect, now, variant)
 		surface.blit(image, image_rect)
+		self.draw_species_motion(surface, species, image_rect, now, kind, variant)
 		if effect and effect not in ("explore", "dash"):
 			self.draw_effect(surface, effect, rect, now, variant)
 

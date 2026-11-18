@@ -46,6 +46,48 @@
           "updated_at": 1794831096.6732821
         }
       ]
+    },
+    {
+      "id": "857aad6592f64977bc0027a2f731202e",
+      "name": "文怡然",
+      "pets": [
+        {
+          "id": "027e69296c4b46969c96b8ba773053ee",
+          "species": "lucario",
+          "name": "路卡利欧",
+          "stats": {
+            "hunger": 67.23111418704194,
+            "happiness": 99.99999639193217,
+            "hygiene": 69.14634354962246,
+            "energy": 52.14634354962244,
+            "health": 100.0
+          },
+          "sleeping": false,
+          "experience": 34,
+          "friendship": 32.0,
+          "stars": 10,
+          "food": 9,
+          "dirt": 1,
+          "cooldowns": {
+            "feed": 1794967064.5290513,
+            "pat": 1794969787.1855323,
+            "play": 1794969477.3072383,
+            "explore": 1794969749.7160478
+          },
+          "task_days": {
+            "feed": "2026-11-18",
+            "pat": "2026-11-18",
+            "explore": "2026-11-18"
+          },
+          "last_pat_at": 1794969187.1855323,
+          "activity": null,
+          "accessories": [
+            "none"
+          ],
+          "equipped": "none",
+          "updated_at": 1794969187.1920269
+        }
+      ]
     }
   ]
 }

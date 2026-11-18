@@ -657,6 +657,21 @@ class PetArtTests(unittest.TestCase):
 					self.assertGreater(surface.get_bounding_rect().width, 40)
 					self.assertGreater(surface.get_bounding_rect().height, 40)
 
+	def test_new_species_have_distinct_local_motion(self):
+		pygame.init()
+		art = virtual_pet.PetArt()
+		for key in ("capybara", "dinosaur", "ninetales", "fire_snake", "shinx",
+					"rayquaza", "lucario", "pachirisu", "buneary"):
+			with self.subTest(species=key):
+				species = virtual_pet.SPECIES_BY_KEY[key]
+				frames = []
+				for now in (0.25, 0.85):
+					surface = pygame.Surface((140, 140), pygame.SRCALPHA)
+					art.draw_species_motion(surface, species, surface.get_rect().inflate(-20, -20),
+									   now, None, 0)
+					frames.append(pygame.image.tobytes(surface, "RGBA"))
+				self.assertNotEqual(frames[0], frames[1])
+
 	def test_each_activity_moves_the_pet_itself(self):
 		pygame.init()
 		art = virtual_pet.PetArt()

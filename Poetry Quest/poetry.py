@@ -22,10 +22,11 @@ from lucky_wheel import GPIOButtons, QUIT_HOLD_SECONDS
 
 DATA_FILE = Path(__file__).resolve().parent / "data" / "poetry.sqlite3"
 CHILDREN_DATA_FILE = Path(__file__).resolve().parent / "data" / "children_poetry.json"
-MODES = (("经典名篇", None, True), ("唐诗题库", "唐诗", False),
-		 ("宋词题库", "宋词", False), ("混合题库", None, False),
-		 ("儿童诗词", None, False))
-CHILDREN_MODE = len(MODES) - 1
+MODES = (("儿童诗词", None, False), ("经典名篇", None, True),
+		 ("唐诗题库", "唐诗", False), ("宋词题库", "宋词", False),
+		 ("混合题库", None, False))
+CHILDREN_MODE = next(index for index, (name, _, _) in enumerate(MODES) if name == "儿童诗词")
+CLASSIC_MODE = next(index for index, (_, _, classic) in enumerate(MODES) if classic)
 QUESTION_KINDS = ("续句", "作者", "作品")
 QUESTIONS_PER_GAME = 10
 
@@ -91,16 +92,11 @@ class PoetryBank:
 		self.database.row_factory = sqlite3.Row
 		self.ranges = {}
 		self.pools = {}
+		self.loaded_option_groups = set()
 		try:
 			self.children_works = json.loads(CHILDREN_DATA_FILE.read_text(encoding="utf-8"))
 			self.metadata = dict(self.database.execute("SELECT name, value FROM metadata"))
 			self.work_counts = dict(self.database.execute("SELECT genre, COUNT(*) FROM works GROUP BY genre"))
-			for kind, genre, answer, classic in self.database.execute(
-					"SELECT kind, genre, answer, classic FROM options"):
-				for classic_only in ((False, True) if classic else (False,)):
-					self.pools.setdefault((kind, genre, classic_only, None), []).append(answer)
-					if kind == "续句":
-						self.pools.setdefault((kind, genre, classic_only, len(answer)), []).append(answer)
 		except Exception:
 			self.database.close()
 			raise
@@ -117,6 +113,21 @@ class PoetryBank:
 		if classic:
 			conditions.append("classic = 1")
 		return " AND ".join(conditions), parameters
+
+	def option_pool(self, kind, genre, classic_only, length):
+		group = (kind, genre, classic_only)
+		if group not in self.loaded_option_groups:
+			query = "SELECT answer FROM options WHERE kind = ? AND genre = ?"
+			parameters = [kind, genre]
+			if classic_only:
+				query += " AND classic = 1"
+			for row in self.database.execute(query, parameters):
+				answer = row[0]
+				self.pools.setdefault((*group, None), []).append(answer)
+				if kind == "续句":
+					self.pools.setdefault((*group, len(answer)), []).append(answer)
+			self.loaded_option_groups.add(group)
+		return self.pools.get((*group, length), ())
 
 	def question(self, mode, kind, rng, used):
 		where, parameters = self.filters(mode, kind)
@@ -139,11 +150,11 @@ class PoetryBank:
 			if row is None or row["stem"] in used:
 				continue
 			length = len(row["answer"]) if kind == "续句" else None
-			pool = self.pools.get((kind, row["genre"], classic, length), ())
+			pool = self.option_pool(kind, row["genre"], classic, length)
 			if len(pool) < 3:
-				pool = self.pools.get((kind, row["genre"], False, length), ())
+				pool = self.option_pool(kind, row["genre"], False, length)
 			if len(pool) < 3:
-				pool = self.pools.get((kind, row["genre"], False, None), ())
+				pool = self.option_pool(kind, row["genre"], False, None)
 			if len(pool) < 3:
 				continue
 			alternatives = rng.sample(pool, min(12, len(pool)))
@@ -333,9 +344,16 @@ class PoetryDisplay:
 
 	def draw_menu(self, game):
 		metadata = game.bank.metadata
-		counts = (int(metadata.get("classic_works", 0)), game.bank.work_counts.get("唐诗", 0),
-				  game.bank.work_counts.get("宋词", 0), int(metadata.get("works", 0)),
-				  len(game.bank.children_works))
+		counts = []
+		for index, (_, genre, classic) in enumerate(MODES):
+			if index == CHILDREN_MODE:
+				counts.append(len(game.bank.children_works))
+			elif classic:
+				counts.append(int(metadata.get("classic_works", 0)))
+			elif genre:
+				counts.append(game.bank.work_counts.get(genre, 0))
+			else:
+				counts.append(int(metadata.get("works", 0)))
 		for index, ((label, _, _), rect) in enumerate(zip(MODES, self.modes)):
 			selected = index == game.mode
 			fill = (218, 241, 226) if selected else PAPER

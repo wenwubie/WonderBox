@@ -152,6 +152,12 @@ class PoetryBankTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.bank.close()
 
+    def test_option_pools_are_loaded_on_demand(self):
+        with closing(poetry.PoetryBank()) as bank:
+            self.assertEqual(bank.pools, {})
+            bank.question(poetry.CLASSIC_MODE, "续句", random.Random(1), set())
+            self.assertTrue(bank.pools)
+
     def test_complete_corpus_and_familiar_version_are_available(self):
         self.assertGreaterEqual(int(self.bank.metadata["tang_records"]), 57000)
         self.assertGreaterEqual(int(self.bank.metadata["song_records"]), 21000)
@@ -190,7 +196,7 @@ class PoetryBankTests(unittest.TestCase):
                         (kind, question.genre, stem)).fetchone()
                     self.assertEqual(question.choices[question.answer], row["answer"])
                     self.assertEqual(question.explanation, "%s · 《%s》" % (row["author"], row["title"]))
-                    if mode == 0:
+                    if mode == poetry.CLASSIC_MODE:
                         self.assertEqual(row["classic"], 1)
 
     def test_many_rounds_have_no_repeated_verses(self):
@@ -207,8 +213,8 @@ class PoetryGameTests(unittest.TestCase):
     def test_children_mode_runs_a_full_game_with_buttons(self):
         with closing(poetry.PoetryBank()) as bank:
             game = poetry.PoetryGame(bank, random.Random(42))
-            game.handle_action("K1")
             self.assertEqual(game.mode, poetry.CHILDREN_MODE)
+            self.assertEqual(poetry.MODES[game.mode][0], "儿童诗词")
             game.handle_action("K3")
             for index in range(poetry.QUESTIONS_PER_GAME):
                 self.assertEqual((game.phase, game.index), ("answer", index))
@@ -312,6 +318,18 @@ class PoetryDisplayTests(unittest.TestCase):
                 display.draw(game)
                 display.draw_error()
                 self.assertLessEqual(display.feedback_rect.bottom, display.footer_top)
+
+    def test_mode_counts_follow_reordered_menu(self):
+        with patch.object(poetry.spi_lcd, "_pygame", pygame):
+            display = poetry.PoetryDisplay(pygame.Surface((240, 320)))
+        game = self.make_game([])
+        counts = []
+        display.small_font = SimpleNamespace(
+            render=lambda text, *_args: counts.append(text) or pygame.Surface((10, 10)))
+        display.draw_menu(game)
+        self.assertEqual([mode[0] for mode in poetry.MODES],
+                         ["儿童诗词", "经典名篇", "唐诗题库", "宋词题库", "混合题库"])
+        self.assertEqual(counts, ["77 首", "647 首", "57613 首", "21061 首", "78674 首"])
 
     def test_all_children_poems_fit_both_orientations(self):
         works = json.loads(poetry.CHILDREN_DATA_FILE.read_text(encoding="utf-8"))
