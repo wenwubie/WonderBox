@@ -25,6 +25,7 @@ PAPER = (255, 248, 224)
 INK = (50, 55, 39)
 GOLD = (255, 194, 73)
 BUTTON_PINS = {"K1": 18, "K2": 23, "K3": 24}
+CAMERA_PLAYER_SCREEN_RATIO = 0.34
 DEBOUNCE_SECONDS = 0.035
 QUIT_HOLD_SECONDS = 1.0
 
@@ -216,7 +217,8 @@ class StickMonkeyGame:
 				self.state = "walking"
 		elif self.state == "walking":
 			self.player_x += self.width * 0.92 * elapsed
-			self.camera_x = max(self.camera_x, self.player_x - self.width * 0.56, 0.0)
+			self.camera_x = max(self.camera_x,
+								self.player_x - self.width * CAMERA_PLAYER_SCREEN_RATIO, 0.0)
 			if self.player_x >= self.walk_end_x:
 				self.player_x = self.walk_end_x
 				if not self.walk_is_success:
@@ -227,7 +229,7 @@ class StickMonkeyGame:
 				self.score += 1
 				self.base_x = self.target_x
 				self.base_width = self.target_width
-				self.camera_x = max(0.0, self.player_x - self.width * 0.56)
+				self.camera_x = max(0.0, self.player_x - self.width * CAMERA_PLAYER_SCREEN_RATIO)
 				self.make_target()
 				self.stick_length = 0.0
 				self.state = "ready"
@@ -295,6 +297,7 @@ class StickyMonkeyDisplay:
 		self.score_frame = self.load_image("framescore-sheet0.png")
 		self.best_frame = self.load_image("framebestscore-sheet0.png")
 		self.pillar_cache = {}
+		self.return_button_rect = None
 
 	def load_font(self, size):
 		try:
@@ -379,6 +382,7 @@ class StickyMonkeyDisplay:
 					  (best_left + best_size[0] // 2, top + round(229 * self.scale_y)))
 
 	def draw(self, game, now):
+		self.return_button_rect = None
 		background_index = 2 if game.state == "title" else 0
 		self.screen.fill(BACKGROUND)
 		self.screen.blit(self.backgrounds[background_index], (0, 0))
@@ -428,12 +432,25 @@ class StickyMonkeyDisplay:
 												 (restart_size, restart_size))
 			self.screen.blit(restart, restart.get_rect(center=(self.width // 2,
 												   round(1400 * self.scale_y))))
-		self.text("K3 返回", self.small_font, PAPER,
-				  (self.width - max(28, round(60 * self.scale_x)),
-				   self.height - max(12, round(25 * self.scale_y))))
+		action_hint = {
+			"title": "开始",
+			"ready": "蓄力",
+			"charging": "松开",
+			"game_over": "重来",
+		}.get(game.state)
+		hint_y = self.height - max(12, round(25 * self.scale_y))
+		if action_hint:
+			self.text(action_hint, self.small_font, PAPER,
+					  (max(28, round(60 * self.scale_x)), hint_y))
+		if game.state != "title":
+			return_center = (self.width - max(28, round(60 * self.scale_x)), hint_y)
+			return_size = self.small_font.size("返回")
+			self.return_button_rect = pygame.Rect((0, 0), return_size).inflate(12, 12)
+			self.return_button_rect.center = return_center
+			self.text("返回", self.small_font, PAPER, return_center)
 
 
-def key_action(event):
+def key_action(event, display=None):
 	if event.type == pygame.KEYDOWN:
 		if event.key in (pygame.K_ESCAPE, pygame.K_q, pygame.K_BACKSPACE):
 			return "RETURN"
@@ -445,6 +462,10 @@ def key_action(event):
 		if event.key in (pygame.K_1, pygame.K_KP1, pygame.K_UP, pygame.K_SPACE):
 			return "K1_UP"
 	if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+		position = spi_lcd.mouse_position(event)
+		if (display is not None and display.return_button_rect is not None
+				and position is not None and display.return_button_rect.collidepoint(position)):
+			return "K3_DOWN"
 		return "K1_DOWN"
 	if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
 		return "K1_UP"
@@ -477,7 +498,7 @@ def main():
 		clock = pygame.time.Clock()
 		running = True
 		key_held = False
-		print("粘猴已启动：按住 K1 蓄力搭桥，松开后猴子前进；K3 返回。")
+		print("粘猴已启动：按住蓄力搭桥，松开后猴子前进；返回游戏菜单。")
 		while running:
 			elapsed = clock.tick(30) / 1000.0
 			if buttons is None:
@@ -485,7 +506,7 @@ def main():
 					if event.type == pygame.QUIT:
 						running = False
 						break
-					action = key_action(event)
+					action = key_action(event, display)
 					if action == "K1_DOWN" and not key_held:
 						key_held = True
 						game.press()
@@ -499,7 +520,7 @@ def main():
 							running = False
 					if action in ("K3", "RETURN"):
 						running = False
-					elif event.type == pygame.KEYUP:
+					elif event.type in (pygame.KEYUP, pygame.MOUSEBUTTONUP):
 						action = hold.process_event(event, None)
 						if action in ("K3", "RETURN"):
 							running = False

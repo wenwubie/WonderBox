@@ -60,7 +60,6 @@ GAME_CATEGORIES = (
 CATEGORIZED_PATHS = {game.path for category in GAME_CATEGORIES for game in category.games}
 DIRECT_GAMES = tuple(game for game in GAMES if game.path not in CATEGORIZED_PATHS)
 HOME_GAMES = DIRECT_GAMES + tuple(category.as_game() for category in GAME_CATEGORIES)
-BACK_ENTRY = Game("返回", "返回全部游戏", "", "back", (115, 130, 137))
 MINI_GAMES_HOME_INDEX = len(DIRECT_GAMES)
 
 
@@ -79,7 +78,7 @@ class LauncherState:
     def visible_games(self):
         if self.show_category is None:
             return HOME_GAMES
-        return GAME_CATEGORIES[self.show_category].games + (BACK_ENTRY,)
+        return GAME_CATEGORIES[self.show_category].games
 
     @property
     def settings_index(self):
@@ -109,10 +108,6 @@ class LauncherState:
         if index < len(category.games):
             self.selected = index
             return "LAUNCH"
-        if index == len(category.games):
-            self.show_category = None
-            self.selected = self.return_selection
-            return "CLOSE_CATEGORY"
         return None
 
     def handle_action(self, action):
@@ -126,6 +121,10 @@ class LauncherState:
             if action == "K3":
                 return "CLOSE_SETTINGS"
             return None
+        if action == "BACK" and self.show_category is not None:
+            self.show_category = None
+            self.selected = self.return_selection
+            return "CLOSE_CATEGORY"
         if action == "POWER":
             self.confirming_power = not self.confirming_power
             self.power_selected = 0
@@ -380,8 +379,11 @@ class LauncherDisplay:
             margin, gap = 16, 10
             top = self.section_y + 28
             width = self.width - margin * 2
-            height = (self.footer_top - top - gap * (entries_count - 1)) // entries_count
-            self.game_rects = [pygame.Rect(margin, top + index * (height + gap), width, height)
+            available_height = self.footer_top - top
+            height = min(54, (available_height - gap * (entries_count - 1)) // entries_count)
+            total_height = height * entries_count + gap * (entries_count - 1)
+            first_y = top + (available_height - total_height) // 2
+            self.game_rects = [pygame.Rect(margin, first_y + index * (height + gap), width, height)
                                for index in range(entries_count)]
         if state.show_category is None:
             section_title = "界面风格 · 设置" if state.selected == state.settings_index else "全部游戏"
@@ -635,7 +637,10 @@ class LauncherApp:
                 if (not state["raw"] and not state["down"]
                         and gpio.input(BUTTON_PINS["K3"]) != gpio.LOW):
                     self.release_gate = False
-            return ["POWER" if action == "QUIT" else action for action in actions]
+            actions = ["POWER" if action == "QUIT" else action for action in actions]
+            if self.state.show_category is not None:
+                actions = ["BACK" if action == "POWER" else action for action in actions]
+            return actions
         actions = []
         for event in pygame.event.get():
             action = self.hold.process_event(event, event_action(event, self.display, self.state))
@@ -644,6 +649,8 @@ class LauncherApp:
         action = self.hold.poll()
         if action:
             actions.append(action)
+        if self.state.show_category is not None:
+            actions = ["BACK" if action == "POWER" else action for action in actions]
         return actions
 
     def play(self):
