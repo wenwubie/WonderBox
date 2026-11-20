@@ -387,52 +387,26 @@ def draw_message(text, t):
 # ---------------------------------------------------------------------------
 def pump(handler, click_rects=(), hold=None):
     """处理一帧按键；模拟模式可额外指定可点击区域。"""
-    if sp.gpio is not None:
-        for name in sp.poll_buttons():
-            if hold is None or name != "K3":
-                handler(name)
-        if hold is not None:
-            source = ("gpio", "K3")
-            if sp.gpio.input(sp.BUTTONS["K3"]) == sp.gpio.LOW:
-                hold.press(source)
-            else:
-                name = hold.release(source)
-                if name:
-                    handler(name)
-            name = hold.poll()
-            if name:
-                handler(name)
-        return sp.spi_lcd.pump()
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            return False
-        name = None
-        if event.type == pygame.KEYDOWN:
-            if event.key in (pygame.K_ESCAPE, pygame.K_q):
-                return False
-            name = sp.handle_key(event.key)
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            name = sp.spi_lcd.button_from_mouse(event, _hint_button_rects)
-            if name is None:
-                name = sp.spi_lcd.button_from_mouse(event, click_rects)
-        if hold is not None:
-            name = hold.process_event(event, name)
-        if name:
-            handler(name)
-    if hold is not None:
-        name = hold.poll()
-        if name:
-            handler(name)
+    def mouse_action(event):
+        return (sp.spi_lcd.button_from_mouse(event, _hint_button_rects)
+                or sp.spi_lcd.button_from_mouse(event, click_rects))
+
+    actions = sp.input_actions(mouse_action, hold)
+    if actions is None:
+        return False
+    for name in actions:
+        handler(name)
     return True
 
 
 # ---------------------------------------------------------------------------
 # 各个子界面循环
 # ---------------------------------------------------------------------------
-def generations_loop(generations):
+def generations_loop(generations, hold=None):
     selected = set(generations)
     row = 0
-    hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
+    if hold is None:
+        hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
     clock = pygame.time.Clock()
 
     while True:
@@ -465,7 +439,7 @@ def generations_loop(generations):
         clock.tick(24)
 
 
-def settings_loop(saved, discovered):
+def settings_loop(saved, discovered, hold=None):
     """设置页循环。取消或长按 K3 返回原设置，关闭窗口或 Esc 返回 None。
 
     discovered 以引用传入: 在"重置发现"行两次 K3 确认后原地清空并落盘。
@@ -475,7 +449,8 @@ def settings_loop(saved, discovered):
     row = 0
     confirm_t0 = [None]          # 重置二次确认的起始时刻(None=未确认)
     CONFIRM_WAIT = 5.0           # 确认状态保持秒数
-    hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
+    if hold is None:
+        hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
     clock = pygame.time.Clock()
 
     def confirming(now=None):
@@ -513,12 +488,11 @@ def settings_loop(saved, discovered):
                     cur["order"] = ORDER_NAMES[
                         (ORDER_NAMES.index(cur["order"]) + 1) % len(ORDER_NAMES)]
                 elif row == 1:    # 世代筛选
-                    sp.wait_release("K3")
-                    generations = generations_loop(cur["generations"])
+                    generations = generations_loop(cur["generations"], hold)
                     if generations is None:
                         return None
                     cur["generations"] = generations
-                    sp.wait_release("K3")
+                    break
                 elif row == 2:    # 重置发现(两次 K3 确认)
                     if ok_confirm:
                         discovered.clear()
@@ -536,7 +510,7 @@ def settings_loop(saved, discovered):
         clock.tick(24)
 
 
-def message_loop(text):
+def message_loop(text, hold):
     """提示页: 等待 K3 返回。"""
     clock = pygame.time.Clock()
     while True:
@@ -544,7 +518,7 @@ def message_loop(text):
         if not sp.spi_lcd.present(poll_events=False):
             return
         acts = []
-        if not pump(lambda n: acts.append(n)):
+        if not pump(acts.append, hold=hold):
             return
         if "K3" in acts:
             return
@@ -569,23 +543,17 @@ def main():
         elif name == "K2":
             sel[0] = (sel[0] + 1) % 4
         elif name == "K3":
-            # 等待 K3 物理松开并复位按键状态:
-            # 否则长按连发事件会被下方子界面/主界面误判为新按键
-            sp.wait_release("K3")
             if sel[0] == 3:                                   # 设置
-                updated_settings = settings_loop(settings, discovered)
+                updated_settings = settings_loop(settings, discovered, hold)
                 if updated_settings is None:
                     running = False
                     return
                 settings = updated_settings
-                sp.wait_release("K3")      # 设置页按 K3 退出后可能仍按住
             else:                                             # 全部/未发现/已发现
                 mode = ("all", "unseen", "found")[sel[0]]
                 lst = build_list(mode, settings, discovered)
                 if lst:
-                    sp.browse(lst,
-                              on_viewed=lambda p: discovered.add(p["id"]),
-                              back_hold=K3_HOLD_BACK)
+                    sp.browse(lst, on_viewed=lambda p: discovered.add(p["id"]), hold=hold)
                 else:
                     if not settings.get("generations", GENERATION_RANGES):
                         msg = "没有选择宝可梦世代\n请在设置中勾选"
@@ -595,7 +563,7 @@ def main():
                         msg = "所选世代没有未发现\n全部都发现啦!"
                     else:
                         msg = "所选世代没有宝可梦\n请检查世代设置"
-                    message_loop(msg)
+                    message_loop(msg, hold)
                 save_discovered(discovered)                    # 浏览记录落盘
 
     try:
@@ -603,8 +571,13 @@ def main():
             counts = menu_counts(settings, discovered)
             draw_menu(settings, sel[0], counts, time.time())
             running = sp.spi_lcd.present(poll_events=False)
-            if running and not pump(on_key, hold=hold):
-                running = False
+            if running:
+                actions = []
+                running = pump(actions.append, hold=hold)
+                for action in actions:
+                    on_key(action)
+                    if action in ("K3", "BACK"):
+                        break
             clock.tick(24)
     finally:
         if sp.gpio is not None:

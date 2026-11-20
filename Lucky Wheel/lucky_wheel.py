@@ -5,11 +5,11 @@ import math
 import os
 import random
 import sys
-import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))
 from common import spi_lcd
+from common.button_input import BUTTON_PINS, DEBOUNCE_SECONDS, GPIOButtons, QUIT_HOLD_SECONDS
 from common import ui_theme
 
 import pygame
@@ -373,53 +373,6 @@ class WheelDisplay:
 		self.draw_wheel(wheel)
 		self.draw_info(wheel)
 		self.draw_buttons(wheel)
-
-
-BUTTON_PINS = {"K1": 18, "K2": 23, "K3": 24}
-DEBOUNCE_SECONDS = 0.035
-QUIT_HOLD_SECONDS = 1.0
-
-
-class GPIOButtons:
-	def __init__(self, gpio, clock=time.monotonic):
-		self.gpio = gpio
-		self.clock = clock
-		try:
-			gpio.setmode(gpio.BCM)
-			for pin in BUTTON_PINS.values():
-				gpio.setup(pin, gpio.IN, pull_up_down=gpio.PUD_UP)
-		except Exception:
-			gpio.cleanup()
-			raise
-		self.states = {name: {"raw": False, "down": False, "changed": clock(),
-							  "since": 0.0, "long": False} for name in BUTTON_PINS}
-
-	def poll(self):
-		now = self.clock()
-		actions = []
-		for name, pin in BUTTON_PINS.items():
-			state = self.states[name]
-			pressed = self.gpio.input(pin) == self.gpio.LOW
-			if pressed != state["raw"]:
-				state["raw"] = pressed
-				state["changed"] = now
-			if pressed != state["down"] and now - state["changed"] >= DEBOUNCE_SECONDS:
-				state["down"] = pressed
-				if pressed:
-					state["since"] = now
-					state["long"] = False
-					if name != "K3":
-						actions.append(name)
-				elif name == "K3" and not state["long"]:
-					actions.append("K3")
-			if (name == "K3" and pressed and state["down"] and not state["long"]
-					and now - state["since"] >= QUIT_HOLD_SECONDS):
-				state["long"] = True
-				actions.append("QUIT")
-		return actions
-
-	def cleanup(self):
-		self.gpio.cleanup(list(BUTTON_PINS.values()))
 
 
 def event_action(event, display):

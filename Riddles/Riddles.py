@@ -560,10 +560,13 @@ def main():
 					running = False
 					break
 				if action == "HOLD_K3":
-					if app.game is None and not app.confirm_reset:
+					if app.confirm_reset or (app.game is not None and app.game.at_end):
+						continue
+					if app.game is None:
 						running = False
 						break
-					action = "MENU"
+					app.handle_action("MENU")
+					break
 				app.handle_action(action)
 			if running:
 				if app.game is None:

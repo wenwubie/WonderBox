@@ -1123,6 +1123,33 @@ class PetDisplayTests(unittest.TestCase):
 			self.assertEqual(game.view, "pets")
 			self.assertEqual(world.pet(owner, pet)["stats"]["hunger"], virtual_pet.INITIAL_STATS["hunger"])
 
+	def test_gpio_release_near_hold_threshold_does_not_confirm_feeding(self):
+		cases = ((1.005, "home", "K3", "confirm_action"),
+				 (1.015, "home", "QUIT", "pets"),
+				 (1.015, "confirm_action", "QUIT", "home"))
+		for released, initial_view, expected_action, expected_view in cases:
+			with self.subTest(released=released, initial_view=initial_view), tempfile.TemporaryDirectory() as directory:
+				world = virtual_pet.PetWorld(Path(directory) / "pets.json", clock=lambda: 1000.0)
+				game = virtual_pet.PetGame(world)
+				game.owner_id = world.create_owner("文武")
+				game.pet_id = world.adopt(game.owner_id, "capybara")
+				game.show("home", virtual_pet.HOME_INDEX["feed"])
+				if initial_view == "confirm_action":
+					game.handle_action("K3")
+				self.assertEqual(game.view, initial_view)
+				gpio = Mock(LOW=0)
+				now, level = 0.0, 1
+				gpio.input.side_effect = lambda pin: level if pin == 24 else 1
+				buttons = virtual_pet.GPIOButtons(gpio, clock=lambda: now)
+				seen = []
+				for now, level in ((0.01, 0), (0.05, 0), (1.0, 0), (released, 1), (1.10, 1), (1.20, 1)):
+					for action in buttons.poll():
+						seen.append(action)
+						game.handle_action("BACK" if action == "QUIT" else action)
+				self.assertEqual(seen, [expected_action])
+				self.assertEqual(game.view, expected_view)
+				self.assertIsNone(world.pet(game.owner_id, game.pet_id)["activity"])
+
 	def test_corrupt_save_displays_error_without_overwriting(self):
 		pygame.display.set_mode((480, 640))
 		screen = pygame.Surface((240, 320))

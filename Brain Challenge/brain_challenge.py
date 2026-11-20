@@ -1183,11 +1183,13 @@ def main():
 				actions = []
 				for event in pygame.event.get():
 					action = action_from_event(event, display, game)
-					if event.type == pygame.WINDOWFOCUSLOST and hold.source is not None:
+					previous_source = hold.source
+					resolved = hold.process_event(event, action)
+					if event.type == pygame.WINDOWFOCUSLOST and previous_source is not None:
 						actions.append("K3_CANCEL")
-					if action == "K3" and hold.source is None:
+					if previous_source is None and hold.source is not None:
 						actions.append("K3_DOWN")
-					actions.append(hold.process_event(event, action))
+					actions.append(resolved)
 				actions.append(hold.poll())
 			else:
 				actions = buttons.poll()

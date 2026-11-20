@@ -246,6 +246,8 @@ class PoetryGameTests(unittest.TestCase):
         self.assertEqual(game.score, 1)
         game.handle_action("K3")
         self.assertEqual(game.phase, "summary")
+        game.handle_action("HOLD_K3")
+        self.assertEqual(game.phase, "summary")
         game.handle_action("K3")
         self.assertEqual((game.phase, game.score), ("answer", 0))
         game.handle_action("BACK")

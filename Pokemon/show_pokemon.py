@@ -21,13 +21,13 @@ import json
 import math
 import os
 import sys
-import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))
 
 from common import spi_lcd
 from common import ui_theme
+from common.button_input import BUTTON_PINS as BUTTONS
 
 # ---------------------------------------------------------------------------
 # 数据路径(相对本脚本所在目录)
@@ -524,7 +524,6 @@ def render(p, page):
 # ---------------------------------------------------------------------------
 # GPIO 按键(参考 test_button.py)
 # ---------------------------------------------------------------------------
-BUTTONS = {"K1": 18, "K2": 23, "K3": 24}
 gpio = None
 try:
     import RPi.GPIO as GPIO  # noqa: E402
@@ -594,30 +593,43 @@ def handle_event(name, state, mon_list=None):
 # ---------------------------------------------------------------------------
 # 浏览主循环: 可独立运行, 也可被 pokemon.py 当作"浏览页"调用
 # ---------------------------------------------------------------------------
-def _k3_down():
-    """K3 当前是否被按住(GPIO 或 模拟键盘 '3')。"""
+def input_actions(mouse_action, hold=None):
+    actions = []
     if gpio is not None:
-        return gpio.input(BUTTONS["K3"]) == gpio.LOW
-    return pygame.key.get_pressed()[pygame.K_3]
+        actions = [name for name in poll_buttons() if hold is None or name != "K3"]
+        if hold is not None:
+            source = ("gpio", "K3")
+            if gpio.input(BUTTONS["K3"]) == gpio.LOW:
+                hold.press(source)
+                action = hold.poll()
+            else:
+                action = hold.release(source)
+            if action:
+                actions.append(action)
+        return actions if spi_lcd.pump() else None
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            return None
+        action = None
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_q):
+                return None
+            action = handle_key(event.key)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            action = mouse_action(event)
+        if hold is not None:
+            action = hold.process_event(event, action)
+        if action:
+            actions.append(action)
+    if hold is not None:
+        action = hold.poll()
+        if action:
+            actions.append(action)
+    return actions
 
 
-def wait_release(name="K3", timeout=3.0):
-    """等待按键物理松开并复位轮询状态。
-
-    用于"长按返回"等场景: 若带着按住状态返回上层界面, 上层轮询会把
-    长按连发事件误判为新按键(如 主界面把 K3 残留当作"确定"再次进入)。
-    """
-    if gpio is not None:
-        t0 = time.time()
-        while gpio.input(BUTTONS[name]) == gpio.LOW and time.time() - t0 < timeout:
-            time.sleep(0.02)
-    else:
-        pygame.event.clear()          # 丢弃模拟模式下排队中的按键事件
-    for st in _btn_state.values():
-        st.update(down=False, t0=0, rep=False, last_rep=0)
-
-
-def browse(mon_list=None, on_viewed=None, back_hold=0.8):
+def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None):
     """浏览模式主循环。
 
     参数:
@@ -634,8 +646,8 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8):
         return "quit"
 
     state = {"idx": 0, "page": 0}
-    k3_t0 = [None]          # K3 按下时刻(自行处理 短按/长按)
-    mouse_k3_down = False
+    if hold is None:
+        hold = spi_lcd.SimulatedHold("K3", "BACK", back_hold)
 
     def cur():
         return mon_list[state["idx"]]
@@ -649,56 +661,17 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8):
     running = redraw()
     clock = pygame.time.Clock()
     while running:
-        now = time.time()
-        if gpio is None:
-            # 模拟模式: 键盘事件
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_ESCAPE, pygame.K_q):
-                        running = False
-                    elif event.key == pygame.K_3:
-                        if k3_t0[0] is None:
-                            k3_t0[0] = now
-                    else:
-                        name = handle_key(event.key)
-                        if name:
-                            handle_event(name, state, mon_list)
-                            running = redraw()
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    name = spi_lcd.button_from_mouse(event, _footer_button_rects)
-                    if name == "K3":
-                        if k3_t0[0] is None:
-                            k3_t0[0] = now
-                        mouse_k3_down = True
-                    elif name:
-                        handle_event(name, state, mon_list)
-                        running = redraw()
-                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                    mouse_k3_down = False
-            clock.tick(30)
-        else:
-            # 真机: GPIO 轮询(K3 事件交由长按检测处理)
-            for name in poll_buttons():
-                if name == "K3":
-                    if k3_t0[0] is None:
-                        k3_t0[0] = now
-                    continue
-                handle_event(name, state, mon_list)
-                running = redraw()
-            clock.tick(60)
-
-        # K3 短按=下一只 / 长按=返回
-        if k3_t0[0] is not None:
-            k3_down = mouse_k3_down or _k3_down()
-            if k3_down and now - k3_t0[0] >= back_hold:
-                wait_release("K3")     # 等 K3 松开再返回, 防止主界面误判为"确定"
+        actions = input_actions(lambda event: spi_lcd.button_from_mouse(event, _footer_button_rects), hold)
+        if actions is None:
+            break
+        for action in actions:
+            if action == "BACK":
                 return "back"
-            if not k3_down:
-                handle_event("K3", state, mon_list)
-                running = redraw()
-                k3_t0[0] = None
+            handle_event(action, state, mon_list)
+            running = redraw()
+            if not running:
+                break
+        clock.tick(30 if gpio is None else 60)
 
     return "quit"
 

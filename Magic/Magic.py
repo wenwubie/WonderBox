@@ -3,12 +3,12 @@ import os
 import math
 import random
 import sys
-import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))
 from common import spi_lcd
 from common import ui_theme
+from common.button_input import GPIOButtons
 
 if spi_lcd.is_simulate():
 	spi_lcd.WINDOW_SCALE = 2
@@ -767,45 +767,19 @@ def handle_action(action, state):
 		state["view"] = "home"
 
 
-BUTTONS = {"K1": 18, "K2": 23, "K3": 24}
-gpio = None
-button_state = {name: {"down": False, "since": 0.0, "long": False} for name in BUTTONS}
 LONG_PRESS_SECONDS = 0.8
 
 
 def setup_gpio():
-	global gpio
 	if spi_lcd.is_simulate():
-		return
+		return None
 	try:
 		import RPi.GPIO as GPIO  # type: ignore[import-not-found]
 
-		GPIO.setmode(GPIO.BCM)
-		for pin in BUTTONS.values():
-			GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-		gpio = GPIO
+		return GPIOButtons(GPIO, hold_seconds=LONG_PRESS_SECONDS, long_action="HOLD_K3", debounce_seconds=0)
 	except Exception as error:
 		print("GPIO 不可用（%s），使用键盘模拟：1/2/3=K1/K2/K3，Backspace=返回。" % error)
-
-
-def poll_gpio():
-	now = time.monotonic()
-	actions = []
-	for name, pin in BUTTONS.items():
-		pressed = gpio.input(pin) == gpio.LOW
-		current = button_state[name]
-		if pressed and not current["down"]:
-			current.update({"down": True, "since": now, "long": False})
-			if name != "K3":
-				actions.append(name)
-		elif pressed and name == "K3" and not current["long"] and now - current["since"] >= LONG_PRESS_SECONDS:
-			current["long"] = True
-			actions.append("BACK")
-		elif not pressed and current["down"]:
-			if name == "K3" and not current["long"]:
-				actions.append("K3")
-			current["down"] = False
-	return actions
+		return None
 
 
 def mouse_button_at(window_position):
@@ -840,31 +814,37 @@ def event_action(event):
 
 
 def main():
-	setup_gpio()
+	buttons = setup_gpio()
 	state = {"view": "home", "menu": 0, "sign": 0, "topic": 0,
 			 "mode": "daily", "pointer": 0, "elapsed": 0.0, "spin_duration": SPIN_DURATION,
 			 "scroll_start": 0, "scroll_direction": 1, "scroll_steps": len(DAILY_CARDS),
 			 "scroll_position": 0.0,
 			 "selected": 0, "card": DAILY_CARDS[0], "card_count": len(DAILY_CARDS), "love_page": 0}
-	hold = spi_lcd.SimulatedHold("K3", "BACK", LONG_PRESS_SECONDS)
+	hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", LONG_PRESS_SECONDS)
 	clock = pygame.time.Clock()
 	running = True
-	print("星愿占卜屋已启动。K1/K2 选择，K3 确认或返回；长按 K3 返回菜单。")
+	print("星愿占卜屋已启动。K1/K2 选择，K3 确认或返回；菜单中长按 K3 退出。")
 
 	try:
 		while running:
 			dt = clock.tick(FRAME_RATE) / 1000.0
-			if gpio is None:
+			if buttons is None:
 				actions = [hold.process_event(event, event_action(event)) for event in pygame.event.get()]
 				actions.append(hold.poll())
 			else:
-				actions = poll_gpio()
+				actions = buttons.poll()
 
 			for action in actions:
+				if action == "HOLD_K3":
+					if state["view"] != "home":
+						continue
+					action = "BACK"
 				if action == "QUIT" or (action == "BACK" and state["view"] == "home"):
 					running = False
 					break
 				handle_action(action, state)
+				if action == "BACK":
+					break
 
 			if state["view"] == "shuffle":
 				state["elapsed"] += dt
@@ -879,8 +859,8 @@ def main():
 			if running:
 				running = render(state)
 	finally:
-		if gpio is not None:
-			gpio.cleanup()
+		if buttons is not None:
+			buttons.cleanup()
 		pygame.quit()
 
 

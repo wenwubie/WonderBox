@@ -14,10 +14,9 @@ import pygame
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
-sys.path.insert(0, str(ROOT_DIR / "Lucky Wheel"))
 from common import spi_lcd
 from common import ui_theme
-from lucky_wheel import GPIOButtons, QUIT_HOLD_SECONDS
+from common.button_input import GPIOButtons, QUIT_HOLD_SECONDS
 
 
 DATA_FILE = Path(__file__).resolve().parent / "data" / "poetry.sqlite3"
@@ -195,6 +194,10 @@ class PoetryGame:
 		self.phase = "answer"
 
 	def handle_action(self, action):
+		if action == "HOLD_K3":
+			if self.phase == "summary":
+				return None
+			action = "BACK"
 		if action == "BACK":
 			if self.phase == "menu":
 				return "EXIT"
@@ -485,7 +488,7 @@ def main():
 		except (OSError, sqlite3.Error, ValueError) as error:
 			print("诗词题库不可用:", error)
 			game = None
-		hold = spi_lcd.SimulatedHold("K3", "BACK", QUIT_HOLD_SECONDS)
+		hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
 		print("诗词大赛已启动：K1/K2/K3 选择，长按 K3 返回。")
@@ -496,7 +499,7 @@ def main():
 						   for event in pygame.event.get()]
 				actions.append(hold.poll())
 			else:
-				actions = ["BACK" if action == "QUIT" else action for action in buttons.poll()]
+				actions = ["HOLD_K3" if action == "QUIT" else action for action in buttons.poll()]
 			for action in actions:
 				if action == "EXIT" or (game is None and action in ("BACK", "K3")):
 					running = False

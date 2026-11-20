@@ -6,6 +6,8 @@ import os
 import sys
 import time
 
+from common.button_input import SimulatedHold as _SimulatedHold
+
 # =============================================================================
 # 显示目标开关（改这一处即可，test_show / test_tft 都会跟着变）
 #
@@ -265,53 +267,9 @@ def button_from_mouse(event, button_rects):
     return None
 
 
-class SimulatedHold:
-    def __init__(self, short_action, long_action, seconds, clock=time.monotonic):
-        self.short_action = short_action
-        self.long_action = long_action
-        self.seconds = seconds
-        self.clock = clock
-        self.source = None
-        self.started = 0.0
-        self.long_sent = False
-
+class SimulatedHold(_SimulatedHold):
     def process_event(self, event, action):
-        pygame = _pygame
-        if event.type == pygame.WINDOWFOCUSLOST:
-            self.source = None
-            return None
-        if event.type == pygame.KEYDOWN and action == self.short_action:
-            self.press(("key", event.key))
-            return None
-        if event.type == pygame.KEYUP:
-            return self.release(("key", event.key))
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and action == self.short_action:
-            self.press(("mouse", event.button))
-            return None
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            return self.release(("mouse", event.button))
-        return action
-
-    def press(self, source):
-        if self.source is None:
-            self.source = source
-            self.started = self.clock()
-            self.long_sent = False
-
-    def release(self, source):
-        if self.source != source:
-            return None
-        action = self.poll()
-        if action is None and not self.long_sent:
-            action = self.short_action
-        self.source = None
-        return action
-
-    def poll(self):
-        if self.source is not None and not self.long_sent and self.clock() - self.started >= self.seconds:
-            self.long_sent = True
-            return self.long_action
-        return None
+        return self.handle_event(_pygame, event, action)
 
 
 def present(poll_events: bool = True) -> bool:

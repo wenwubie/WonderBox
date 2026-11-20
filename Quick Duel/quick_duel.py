@@ -610,10 +610,10 @@ def main():
 					running = False
 					break
 				if action == "BACK":
-					if game.view != "wheel":
-						running = False
-						break
-					continue
+					if game.view == "wheel":
+						continue
+					running = False
+					break
 				game.handle_action(action)
 			if not running:
 				break

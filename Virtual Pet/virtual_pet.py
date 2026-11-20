@@ -19,10 +19,9 @@ import pygame
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
-sys.path.insert(0, str(ROOT_DIR / "Lucky Wheel"))
 from common import spi_lcd
 from common import ui_theme
-from lucky_wheel import GPIOButtons, QUIT_HOLD_SECONDS
+from common.button_input import GPIOButtons, QUIT_HOLD_SECONDS
 
 SAVE_FILE = Path(__file__).resolve().parent / "data" / "pets.json"
 OWNER_NAMES = ("文武", "文怡然", "文焕然", "欧泽轩", "欧阳沐希")

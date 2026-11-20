@@ -11,13 +11,13 @@ import time
 
 from common import spi_lcd
 from common import ui_theme
+from common.button_input import BUTTON_PINS, GPIOButtons, QUIT_HOLD_SECONDS
 
 import pygame
 
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(ROOT_DIR, "Lucky Wheel"))
-from lucky_wheel import BUTTON_PINS, GPIOButtons, QUIT_HOLD_SECONDS
+K3_KEYS = (pygame.K_3, pygame.K_KP3, pygame.K_RETURN, pygame.K_KP_ENTER)
 
 
 @dataclass(frozen=True)
@@ -112,6 +112,8 @@ class LauncherState:
 
     def handle_action(self, action):
         if self.show_declaration:
+            if action == "POWER":
+                return "EXIT"
             return "ACCEPT_DECLARATION" if action == "K3" else None
         if self.show_settings:
             if action == "K1":
@@ -611,6 +613,8 @@ class LauncherApp:
         self.release_gate = False
         if self.simulate:
             pygame.display.set_caption("Wonder Box 奇趣宝盒")
+            if after_game:
+                self.hold.block_held(pygame, K3_KEYS)
         else:
             try:
                 gpio = importlib.import_module("RPi.GPIO")
@@ -632,10 +636,7 @@ class LauncherApp:
             actions = self.buttons.poll()
             if self.release_gate:
                 actions = [action for action in actions if action not in ("K3", "QUIT")]
-                state = self.buttons.states["K3"]
-                gpio = self.buttons.gpio
-                if (not state["raw"] and not state["down"]
-                        and gpio.input(BUTTON_PINS["K3"]) != gpio.LOW):
+                if self.buttons.is_released("K3"):
                     self.release_gate = False
             actions = ["POWER" if action == "QUIT" else action for action in actions]
             if self.state.show_category is not None:
@@ -692,6 +693,9 @@ class LauncherApp:
                     self.running = False
                     break
                 result = self.state.handle_action(action)
+                if result == "EXIT":
+                    self.running = False
+                    break
                 if result == "ACCEPT_DECLARATION":
                     self.accept_declaration()
                     break
