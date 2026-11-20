@@ -315,10 +315,12 @@ class WerewolfGame:
 		if action == "EXIT":
 			return "EXIT"
 		if action == "BACK":
-			if phase == "setup" and self.editing_lineup:
-				if self.setup_index == 0:
-					self.editing_lineup = False
-				return None
+			if phase == "setup":
+				if self.editing_lineup:
+					if self.setup_index == 0:
+						self.editing_lineup = False
+					return None
+				return "EXIT"
 			if phase == "interrupt_confirm":
 				self.cancel_interrupt()
 				return None
@@ -520,6 +522,8 @@ class WerewolfDisplay:
 				self.text(value, 14, color, rect.centery, rect.right - 42)
 		if not preview and game.lineup_error:
 			self.text(game.lineup_error, 14, self.RED, self.height - 54)
+		elif not game.editing_lineup:
+			self.text("长按 K3 返回总界面", 12, self.MUTED, self.height - 54)
 		if preview:
 			return ("减一人", "加一人", "应用推荐")
 		if game.editing_lineup:
