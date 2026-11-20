@@ -51,6 +51,7 @@ GAMES = (
     Game("星愿占卜屋", "星座占卜", "Magic/Magic.py", "magic", (172, 125, 176)),
     Game("诗词大赛", "唐诗宋词", "Poetry Quest/poetry.py", "poetry", (186, 91, 73)),
     Game("宠物乐园", "萌宠养成", "Virtual Pet/virtual_pet.py", "pet", (87, 158, 120)),
+    Game("狼人杀", "主持人助手", "Werewolf/werewolf.py", "werewolf", (73, 110, 97)),
     Game("粘猴", "搭桥闯关", "Mini Games/Sticky Monkey/sticky_monkey.py", "monkey", (126, 177, 82)),
 )
 
@@ -326,6 +327,14 @@ class LauncherDisplay:
             pygame.draw.ellipse(self.screen, PAPER, (center[0] - 7, center[1], 14, 10))
             for dx, dy in ((-7, -4), (-2, -7), (3, -7), (8, -4)):
                 pygame.draw.circle(self.screen, PAPER, (center[0] + dx, center[1] + dy), 3)
+        elif game.icon == "werewolf":
+            x, y = center
+            points = ((x - 9, y - 9), (x - 3, y - 5), (x + 3, y - 5), (x + 9, y - 9),
+                      (x + 8, y + 3), (x, y + 9), (x - 8, y + 3))
+            pygame.draw.polygon(self.screen, PAPER, points)
+            for dx in (-4, 4):
+                pygame.draw.circle(self.screen, game.color, (x + dx, y), 1)
+            pygame.draw.circle(self.screen, game.color, (x, y + 5), 2)
         elif game.icon == "monkey":
             pygame.draw.circle(self.screen, (112, 67, 39), center, 10)
             pygame.draw.circle(self.screen, (255, 220, 167), (center[0] + 2, center[1] + 2), 7)
