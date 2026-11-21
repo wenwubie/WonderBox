@@ -24,19 +24,29 @@ ROLE_SKILLS = {
 	"villager": "无夜间技能，白天讨论和投票",
 }
 BOARDS = {
+	4: (1, 1, 0, 0, 2), 5: (1, 1, 0, 0, 3),
 	6: (2, 1, 0, 0, 3), 7: (2, 1, 1, 0, 3), 8: (2, 1, 1, 1, 3),
 	9: (3, 1, 1, 1, 3), 10: (3, 1, 1, 1, 4),
 	11: (3, 1, 1, 1, 5), 12: (4, 1, 1, 1, 5),
 }
-REVEAL_SECONDS = 3
+DEFAULT_PRESET = 6
+REVEAL_SECONDS = 2
 MIN_REVEAL_SECONDS = 1
 MAX_REVEAL_SECONDS = 10
 SETUP_DURATION_INDEX = len(ROLE_NAMES) + 1
-SETUP_CONFIRM_INDEX = len(ROLE_NAMES) + 2
+SETUP_SAFETY_INDEX = len(ROLE_NAMES) + 2
+SETUP_CONFIRM_INDEX = len(ROLE_NAMES) + 3
 WOLF_SECONDS = 10
 NIGHT_ACTIONS = {"狼人请睁眼": "wolf", "预言家请睁眼": "seer",
 				 "守卫请睁眼": "guard", "女巫请睁眼": "save", "女巫：确认用毒": "poison"}
+SAFE_FIRST_NIGHT_WOLF_CUE = (
+	"狼人确认同伴", ("狼人请睁眼，只确认同伴。",),
+	("首夜为平安夜，不指定袭击目标。", "确认同伴后按 K3 继续。"),
+)
 ACTION_NAMES = {"wolf": "狼袭", "guard": "守护", "seer": "查验", "save": "解药", "poison": "毒药"}
+# 女巫环节的环节标题与台词(cues[1])必须与用药状态无关：只要女巫存活，每晚都完整
+# 提示"是否用解药""是否用毒药"，哪怕药已用完。否则玩家会从主持人跳过某个环节
+# 推断出女巫的用药情况。用药状态的差异只允许出现在"仅主持人看"的登记页里。
 NIGHT_ROLES = (
 	("guard", (
 		("守卫请睁眼", ("守卫请睁眼，指定守护目标。",),
@@ -52,12 +62,12 @@ NIGHT_ROLES = (
 		  "拇指向上＝好人，向下＝狼人。")),
 	)),
 	("witch", (
-		("女巫请睁眼", ("女巫请睁眼，是否救狼袭目标？",),
-			 ("有解药时，静默指出狼袭目标。", "首夜可自救；之后不能自救。",
-		  "女巫拇指向上＝救；摇头＝不救。", "按 K1 查看药量并登记。")),
-		("女巫：确认用毒", ("女巫请指定毒杀目标。",),
-		 ("已救人或已用毒：不念，直接继续。", "指向一名其他存活玩家＝用毒。",
-		  "摇头＝不用。", "按 K1 查看药量并登记。")),
+		("女巫请睁眼", ("女巫请睁眼，是否用解药救狼袭目标？",),
+		 ("每晚照常念台词，走完整流程。", "用药时静默指出目标；摇头＝不用。",
+		  "首夜可自救；之后不能自救。", "按 K1 查看药量并登记。")),
+		("女巫：确认用毒", ("女巫请睁眼，是否用毒药指定目标？",),
+		 ("用过的药也要照常念，不可跳过。", "用毒时静默指出目标；摇头＝不用。",
+		  "按 K1 查看药量并登记。", "流程一致才不会暴露用药情况。")),
 	)),
 )
 
@@ -67,7 +77,8 @@ class WerewolfGame:
 		self.rng = rng if rng is not None else random.SystemRandom()
 		self.clock = clock
 		self.reveal_seconds = REVEAL_SECONDS
-		self.preset = min(BOARDS)
+		self.first_night_safety = True
+		self.preset = DEFAULT_PRESET
 		self.lineup = dict(zip(ROLE_NAMES, BOARDS[self.preset]))
 		self.reset()
 
@@ -102,10 +113,14 @@ class WerewolfGame:
 	@property
 	def lineup_error(self):
 		if not min(BOARDS) <= self.count <= max(BOARDS):
-			return "总人数须为 6 至 12 人"
+			return f"总人数须为 {min(BOARDS)} 至 {max(BOARDS)} 人"
 		if not 0 < self.lineup["wolf"] < self.count - self.lineup["wolf"]:
 			return "至少 1 名狼人，且狼人少于好人"
 		return ""
+
+	@property
+	def safe_first_night(self):
+		return self.first_night_safety and self.round == 1
 
 	def configure(self, action, step):
 		confirm = SETUP_CONFIRM_INDEX
@@ -121,9 +136,15 @@ class WerewolfGame:
 			elif step and self.setup_index == SETUP_DURATION_INDEX:
 				self.reveal_seconds = max(MIN_REVEAL_SECONDS,
 								  min(MAX_REVEAL_SECONDS, self.reveal_seconds + step))
+			elif step and self.setup_index == SETUP_SAFETY_INDEX:
+				self.first_night_safety = not self.first_night_safety
 			elif step:
 				role = tuple(ROLE_NAMES)[self.setup_index - 1]
-				self.lineup[role] = max(0, min(max(BOARDS), self.lineup[role] + step))
+				before = self.lineup[role]
+				after = max(0, min(max(BOARDS), before + step))
+				self.lineup[role] = after
+				if role != "villager" and after != before:
+					self.lineup["villager"] = max(0, self.lineup["villager"] - (after - before))
 			return
 		if step:
 			self.setup_index = (self.setup_index + step) % (confirm + 1)
@@ -167,16 +188,25 @@ class WerewolfGame:
 		self.cues = [("天黑请闭眼", ("天黑请闭眼，保持安静。", "请只向主持人做手势，不出声。"),
 					  ("出局玩家不再睁眼或行动。", "同身份多人共选目标、共享次数。", "行动结果先记下，天亮统一登记。"))]
 		living_roles = {self.roles[player - 1] for player in self.alive}
+		safe_first = self.safe_first_night
 		for role, instructions in NIGHT_ROLES:
 			if role in living_roles:
-				if role == "witch" and self.previous_dose("save") and self.previous_dose("poison"):
+				if safe_first and role == "guard":
 					continue
-				self.cues.extend(instructions)
+				if safe_first and role == "wolf":
+					self.cues.append(SAFE_FIRST_NIGHT_WOLF_CUE)
+				elif safe_first and role == "witch":
+					continue
+				else:
+					self.cues.extend(instructions)
 				close = ROLE_NAMES[role] + "请闭眼"
 				self.cues.append((close, (close + "。",), ("确认闭眼后继续。",)))
-		self.cues.append(("天亮请睁眼", ("天亮了，所有玩家请睁眼。",),
-						  ("狼袭被守护或解药抵消：不出局。", "毒药目标出局，不受守护影响。",
-						   "死亡名单已按行动自动计算。", "核对后继续，只公布出局号码。")))
+		if safe_first:
+			dawn_notes = ("首夜平安夜：无人夜袭、无人用药。", "核对后继续，直接进入白天讨论。")
+		else:
+			dawn_notes = ("狼袭被守护或解药抵消：不出局。", "毒药目标出局，不受守护影响。",
+						  "死亡名单已按行动自动计算。", "核对后继续，只公布出局号码。")
+		self.cues.append(("天亮请睁眼", ("天亮了，所有玩家请睁眼。",), dawn_notes))
 
 	@property
 	def night_action(self):
@@ -349,10 +379,7 @@ class WerewolfGame:
 				self.log_round = self.round
 				self.phase = "night_log"
 			elif action == "K3":
-				if (self.night_action in ("save", "poison")
-						and not self.record_targets()):
-					self.move_night(self.index + 1)
-				elif self.night_action:
+				if self.night_action:
 					self.record_advances = True
 					self.record_index = 0
 					self.phase = "night_record"
@@ -501,6 +528,7 @@ class WerewolfDisplay:
 		rows = [("推荐配板", f"{game.preset} 人", None)]
 		rows.extend((name, str(count), role) for (role, name), count in zip(ROLE_NAMES.items(), counts))
 		rows.append(("身份显示", f"{game.reveal_seconds} 秒", None))
+		rows.append(("首夜平安夜", "开启" if game.first_night_safety else "关闭", None))
 		rows.append(("确认开局", "", None))
 		row_height = min(28, (self.height - 114) // len(rows))
 		top = 45 + max(0, (self.height - 114 - row_height * len(rows)) // 2)
@@ -516,9 +544,10 @@ class WerewolfDisplay:
 			color = self.GOLD if selected else self.PAPER
 			self.text(name, 14, color, rect.centery, 81)
 			if value:
-				if selected and game.editing_lineup:
-					value = (f"-   {game.reveal_seconds}秒   +" if index == SETUP_DURATION_INDEX
-							 else f"-   {value}   +")
+				if selected and game.editing_lineup and index == SETUP_DURATION_INDEX:
+					value = f"-   {game.reveal_seconds}秒   +"
+				elif selected and game.editing_lineup:
+					value = f"-   {value}   +"
 				self.text(value, 14, color, rect.centery, rect.right - 42)
 		if not preview and game.lineup_error:
 			self.text(game.lineup_error, 14, self.RED, self.height - 54)
@@ -693,13 +722,15 @@ class WerewolfDisplay:
 		self.text(eyebrow, 12, self.MUTED, 54)
 		self.text(title, 17, self.PAPER, 72)
 		y = 91
-		for label, lines, color in (("仅主持人看 · 不念", private, self.MUTED),
-								  ("请念给玩家听", spoken, self.GOLD)):
-			pygame.draw.rect(self.screen, self.PANEL, (10, y - 7, self.width - 20, 14), border_radius=4)
-			self.text(label, 12, color, y)
+		# 念给玩家听的内容放上面、字号更大；仅主持人看的放下面。
+		for label, lines, color, size, leading in (
+				("请念给玩家听", spoken, self.GOLD, 14, 17),
+				("仅主持人看 · 不念", private, self.MUTED, 12, 14)):
+			pygame.draw.rect(self.screen, self.PANEL, (10, y - 8, self.width - 20, size + 4), border_radius=4)
+			self.text(label, size, color, y)
 			for line in lines:
-				y += 14
-				self.text(line, 12, self.PAPER, y)
+				y += leading
+				self.text(line, size, self.PAPER, y)
 			y += 17
 
 	def draw(self, game):
