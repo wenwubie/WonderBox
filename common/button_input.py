@@ -1,7 +1,7 @@
 import time
 
 
-BUTTON_PINS = {"K1": 18, "K2": 23, "K3": 24}
+BUTTON_PINS = {"K1": 5, "K2": 23, "K3": 24}
 DEBOUNCE_SECONDS = 0.035
 QUIT_HOLD_SECONDS = 1.0
 

@@ -14,7 +14,7 @@
                 底部一行: 左 取消 | 右 保存
 
 按键:
-    主界面:  K1 (GPIO18) 向上    K2 (GPIO23) 向下    K3 (GPIO24) 确定
+    主界面:  K1 (GPIO5) 向上    K2 (GPIO23) 向下    K3 (GPIO24) 确定
     浏览页:  K1 翻页  K2 上一只  K3 下一只;  长按 K3 返回主界面
     查看过的宝可梦自动记为"已发现", 持久保存于 pokedex_data/discovered.json
 

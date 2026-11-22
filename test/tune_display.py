@@ -6,7 +6,7 @@
       底部显示当前参数
 
 按键:
-    K1 (GPIO18): 当前参数 -0.05
+    K1 (GPIO5): 当前参数 -0.05
     K2 (GPIO23): 当前参数 +0.05
     K3 (GPIO24): 在 GAMMA / CONTRAST 之间切换
 
@@ -44,7 +44,7 @@ if os.path.exists(_img_path):
 # ---------------------------------------------------------------------------
 # GPIO(与 test_button.py 相同)
 # ---------------------------------------------------------------------------
-BUTTONS = {"K1": 18, "K2": 23, "K3": 24}
+BUTTONS = {"K1": 5, "K2": 23, "K3": 24}
 gpio = None
 try:
     import RPi.GPIO as GPIO  # noqa: E402
@@ -53,7 +53,7 @@ try:
     for name, pin in BUTTONS.items():
         GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
     gpio = GPIO
-    print("GPIO 初始化完成: K1=GPIO18 K2=GPIO23 K3=GPIO24")
+    print("GPIO 初始化完成: K1=GPIO5 K2=GPIO23 K3=GPIO24")
 except ImportError:
     print("模拟模式: 按 1/2/3 代替 K1/K2/K3 (K1减 K2加 K3切换项), Esc 退出。")
 except Exception as e:

@@ -1,7 +1,7 @@
 """测试树莓派 Zero 2W 上的三个按键 K1/K2/K3。
 
 接线（按键另一端统一接 GND，启用内部上拉，按下为低电平）：
-    K1 -> GPIO18 (物理引脚 12)
+    K1 -> GPIO5 (物理引脚 29)
     K2 -> GPIO23 (物理引脚 16)
     K3 -> GPIO24 (物理引脚 18)
 
@@ -21,7 +21,7 @@ from common import spi_lcd
 # spi_lcd.SIMULATE_DISPLAY = False  # 强制树莓派 /dev/fb1
 
 BUTTONS = {  # 名称 -> BCM 编号
-    "K1": 18,
+    "K1": 5,
     "K2": 23,
     "K3": 24,
 }

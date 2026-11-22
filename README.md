@@ -78,4 +78,4 @@ python main.py --sim --landscape
 
 ## 树莓派配置
 
-树莓派需要项目已有的 Pygame、RPi.GPIO、中文字体和 `/dev/fb1` 配置，按键使用 GPIO 18、23、24。关机需要以 root 运行，或允许当前用户非交互执行 `sudo -n shutdown -h now`；权限不足时会显示关机失败。
+树莓派需要项目已有的 Pygame、RPi.GPIO、中文字体和 `/dev/fb1` 配置，按键使用 GPIO 5、23、24（K1 由 GPIO18 改为 GPIO5，避免与 I2S 音频 BCLK 冲突；对应物理引脚 29）。关机需要以 root 运行，或允许当前用户非交互执行 `sudo -n shutdown -h now`；权限不足时会显示关机失败。

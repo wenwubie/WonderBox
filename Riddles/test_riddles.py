@@ -543,7 +543,7 @@ class GPIOButtonTests(unittest.TestCase):
 			BCM, IN, PUD_UP, LOW = 1, 2, 3, 0
 
 			def __init__(self):
-				self.values = {18: 1, 23: 1, 24: 1}
+				self.values = {5: 1, 23: 1, 24: 1}
 				self.cleaned = None
 
 			def setmode(self, mode):
@@ -583,17 +583,17 @@ class GPIOButtonTests(unittest.TestCase):
 		buttons.poll()
 		now[0] = 1.45
 		self.assertEqual(buttons.poll(), [])
-		gpio.values[18] = gpio.values[23] = 0
+		gpio.values[5] = gpio.values[23] = 0
 		now[0] = 1.50
 		buttons.poll()
 		now[0] = 1.55
 		self.assertEqual(buttons.poll(), ["K1", "K2"])
-		gpio.values[18] = gpio.values[23] = 1
+		gpio.values[5] = gpio.values[23] = 1
 		now[0] = 1.60
 		buttons.poll()
 		now[0] = 1.65
 		buttons.poll()
-		gpio.values[18] = 0
+		gpio.values[5] = 0
 		now[0] = 1.70
 		buttons.poll()
 		now[0] = 1.75
@@ -603,7 +603,7 @@ class GPIOButtonTests(unittest.TestCase):
 		now[0] = 3.00
 		self.assertEqual(buttons.poll(), [])
 		buttons.cleanup()
-		self.assertEqual(gpio.cleaned, [18, 23, 24])
+		self.assertEqual(gpio.cleaned, [5, 23, 24])
 
 
 if __name__ == "__main__":
