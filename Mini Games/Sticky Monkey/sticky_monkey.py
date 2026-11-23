@@ -11,9 +11,11 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
 ASSET_DIR = os.path.join(BASE_DIR, "assets")
+MEDIA_DIR = os.path.join(BASE_DIR, "media")
 BEST_RECORD_PATH = os.path.join(BASE_DIR, "best_score.json")
 sys.path.insert(0, ROOT_DIR)
 
+from common import audio as audio_output
 from common import spi_lcd
 from common.button_input import BUTTON_PINS, DEBOUNCE_SECONDS, GPIOButtons, QUIT_HOLD_SECONDS
 
@@ -89,11 +91,25 @@ def present_frame(screen):
 		spi_lcd.present()
 
 
+# 音效触发点参考原版 Construct 2 工程：gamemusic 循环、button 点击、
+# stick 伸出、stickdone 搭好、walk 行走、wonderful 得分、gameover 失败。
+MONKEY_SOUNDS = ("button", "taptoplay", "gamewon", "stick", "stickdone",
+				 "walk", "wonderful", "gameover")
+MONKEY_MUSIC = "gamemusic"
+
+
+def create_audio():
+	"""用通用音频层创建粘猴音源，设备差异由 common.audio 自动处理。"""
+	return audio_output.GameAudio(MEDIA_DIR, sounds=MONKEY_SOUNDS,
+								  music=MONKEY_MUSIC)
+
+
 class StickMonkeyGame:
-	def __init__(self, width, height, rng=None, best_score=0, best_time=""):
+	def __init__(self, width, height, rng=None, best_score=0, best_time="", on_event=None):
 		self.width = width
 		self.height = height
 		self.rng = rng or random.Random()
+		self.on_event = on_event or (lambda name: None)
 		self.scale_x = width / 1080
 		self.scale_y = height / 1920
 		self.player_width = max(1, round(162 * self.scale_x))
@@ -144,17 +160,20 @@ class StickMonkeyGame:
 
 	def press(self):
 		if self.state in ("title", "game_over"):
+			self.on_event("taptoplay")
 			self.reset_round("ready")
 			return
 		if self.state == "ready":
 			self.hold_time = 0.0
 			self.stick_length = 0.0
 			self.state = "charging"
+			self.on_event("stick")
 
 	def release(self):
 		if self.state == "charging":
 			self.state = "bridge"
 			self.bridge_elapsed = 0.0
+			self.on_event("stickdone")
 
 	def update(self, elapsed):
 		elapsed = max(0.0, min(elapsed, 0.1))
@@ -170,6 +189,7 @@ class StickMonkeyGame:
 							   if self.walk_is_success
 							   else self.base_x + self.base_width + self.stick_length)
 				self.state = "walking"
+				self.on_event("walk")
 		elif self.state == "walking":
 			self.player_x += self.width * 0.92 * elapsed
 			self.camera_x = max(self.camera_x,
@@ -180,8 +200,10 @@ class StickMonkeyGame:
 					self.state = "falling"
 					self.fall_speed = 0.0
 					self.fall_elapsed = 0.0
+					self.on_event("gameover")
 					return
 				self.score += 1
+				self.on_event("wonderful")
 				self.base_x = self.target_x
 				self.base_width = self.target_width
 				self.camera_x = max(0.0, self.player_x - self.width * CAMERA_PLAYER_SCREEN_RATIO)
@@ -428,6 +450,10 @@ def key_action(event, display=None):
 
 
 def main():
+	# 必须在 spi_lcd.init()/pygame.init() 之前声明需要声音：
+	# 让显示层跳过 dummy 音频驱动，音频设备在 pygame.init() 阶段只打开一次，
+	# 避免反复开关功放产生"啪啪"的爆音。
+	audio_output.prepare()
 	if spi_lcd.is_simulate():
 		spi_lcd.WINDOW_SCALE = 2
 		if "--landscape" in sys.argv:
@@ -447,8 +473,11 @@ def main():
 		else:
 			pygame.display.set_caption("粘猴")
 		display = StickyMonkeyDisplay(screen)
+		audio = create_audio()
 		best_score, best_time = load_best_record()
-		game = StickMonkeyGame(*screen.get_size(), best_score=best_score, best_time=best_time)
+		game = StickMonkeyGame(*screen.get_size(), best_score=best_score, best_time=best_time,
+							   on_event=audio.play)
+		audio.start_music()
 		hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
@@ -503,11 +532,13 @@ def main():
 					print("最高纪录保存失败。")
 				else:
 					game.best_score, game.best_time = record
+					audio.play("gamewon")
 			display.draw(game, pygame.time.get_ticks() / 1000.0)
 			present_frame(screen)
 	finally:
 		if buttons is not None:
 			buttons.cleanup()
+		audio.close()
 		pygame.quit()
 
 

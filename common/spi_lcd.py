@@ -173,6 +173,29 @@ def init():
     _simulate = _want_simulate()
     os.environ.setdefault("PYGAME_DETECT_AVX2", "1")
 
+    # 默认让 pygame.init() 用 dummy 音频驱动：本程序大多不需要声音，
+    # 用真驱动会打开 ALSA/系统声卡，MAX98357 功放在设备开关时会"啪"一声。
+    # 需要发声的游戏只要在 init() 之前调用 common.audio.prepare() 声明，
+    # 这里就会跳过 dummy，让 pygame.init() 一次打开真实设备。
+    try:
+        from common import audio as _audio
+        _want_sound = _audio.is_activated()
+    except Exception:
+        _want_sound = False
+    if not _want_sound:
+        # 必须无条件覆盖，不能用 setdefault：
+        # 若 shell 环境里残留了 SDL_AUDIODRIVER=alsa（例如调试粘猴音频时 export 过），
+        # setdefault 会失效，导致启动器/无声游戏也打开真实音频设备。
+        # 启动器每次进出游戏都会 pygame.quit()+init()，于是每次切换都开关功放、
+        # 发出"啪啪"爆音。无声程序强制走 dummy，彻底不碰真实设备。
+        os.environ["SDL_AUDIODRIVER"] = "dummy"
+    else:
+        # 声明需要声音的程序（如粘猴）：清掉可能残留的 dummy，
+        # 让 audio.prepare() 设定的驱动（真机 alsa / 模拟系统声卡）生效。
+        # 只清 dummy，尊重调用方显式指定的其它驱动。
+        if os.environ.get("SDL_AUDIODRIVER", "").strip().lower() == "dummy":
+            os.environ.pop("SDL_AUDIODRIVER", None)
+
     if not _simulate:
         os.environ["SDL_VIDEODRIVER"] = "dummy"
         os.environ["SDL_FBDEV"] = FB_DEV
