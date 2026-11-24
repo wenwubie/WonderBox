@@ -1,3 +1,6 @@
 {
- "style": "森林"
+ "style": "森林",
+ "sfx_volume": 20,
+ "voice_volume": 50,
+ "voice_enabled": true
 }

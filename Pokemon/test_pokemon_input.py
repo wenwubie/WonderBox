@@ -97,7 +97,8 @@ class PokemonInputTests(unittest.TestCase):
                 patch.object(pygame, "quit"):
             pokemon.main()
 
-        self.assertEqual(selections[:3], [0, 3, 0])
+        # 主菜单现在有 5 项(新增"已收藏"): 从"全部"按 K1 上翻到"设置"(索引 4)
+        self.assertEqual(selections[:3], [0, 4, 0])
         browse.assert_called_once()
 
     def test_menu_k3_hold_exits_without_opening_a_browser(self):

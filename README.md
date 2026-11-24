@@ -44,7 +44,7 @@ Pi Zero 2 W 上实时语音合成一句要几秒，所以**全部音效/语音�
 
 各游戏音效接入（`common/sfx.py` 统一封装，复用已打开的 mixer，不另开音频设备）：
 - 从主界面进入任意功能 → 播该功能的 `welcome.ogg`。
-- 按键按下 → 播 `button.ogg`（带节流防长按连发）。**粘猴自带完整音效，游戏过程中不额外加按键音**，只在进入时播欢迎语；进入游戏后左下角 K1 位置显示"开始"。
+- 按键按下 → 播 `button.ogg`（带节流防长按连发）。**朗读型游戏（脑筋急转弯/诗词/宝可梦图鉴）采用"语音优先、按键音兜底"**：一次按键若已触发朗读就只响语音、不再叠加按键音（避免"滴"一声紧接朗读显得吵）；返回菜单、选项未变、语音关闭或音频缺失等没有朗读的场合仍响按键音，保证操作反馈。其它游戏按键音照常。**粘猴自带完整音效，游戏过程中不额外加按键音**，只在进入时播欢迎语；进入游戏后左下角 K1 位置显示"开始"。
 - 头脑挑战 → 只对错提示音（correct/wrong），不朗读。
 - 脑筋急转弯 → 读题目与答案；诗词儿童模式 → 读题目 + 三个选项（"选项一/二/三"串行连播）+ 答案；宝可梦图鉴 → 切换读名字。
 - 幸运转盘/骰子对决 → 转动停下后朗读结果内容（换题/new round 会重读）。
@@ -52,7 +52,9 @@ Pi Zero 2 W 上实时语音合成一句要几秒，所以**全部音效/语音�
 
 生成/更新音频（在开发机，需 `edge-tts` + `ffmpeg`，生成时需联网）：`python tools/generate_assets.py`（已存在自动跳过），可用 `--only sfx|petact|welcome|riddles|poetry|pokemon|wheel|duel` 分组、`--force` 强制重生成、`--list` 查看清单。语音用微软神经网络音色 **晓伊·萌版**（`zh-CN-XiaoyiNeural`，语速 +8%、音高 +30Hz，比旧 Piper 自然且更萌），可用环境变量 `WONDERBOX_VOICE` / `WONDERBOX_VOICE_RATE` / `WONDERBOX_VOICE_PITCH` 覆盖；按键/提示/转盘/宠物动作音由脚本合成。合成后压成 ogg 随项目走，Pi 端零依赖、零联网、不需要 piper/模型/edge-tts。改题库后用 `--force` 重跑对应分组。
 
-`tts.Speaker(pregen_dir=...).status()` 可看 `enabled`/`pregen_ready`/`play_count`/`miss_count`/`load_error` 排查。`POKEMON_NO_AUDIO=1` 静音。
+`tts.Speaker(pregen_dir=...).status()` 可看 `enabled`/`voice_enabled`/`pregen_ready`/`play_count`/`miss_count`/`load_error` 排查。`POKEMON_NO_AUDIO=1` 全局静音。
+
+音量与语音开关（主界面右上角齿轮 → 设置）：四项为**界面风格 / 按键音量 / 语音音量 / 语音提示**。K1/K2 选项目，K3 进入调节，调节态 K1 减、K2 加（步长 10%），再按 K3 完成；长按 K3 返回主界面，触屏可直接点项目。设置立即写入 `settings.json`（`sfx_volume`、`voice_volume`、`voice_enabled`），各游戏是独立进程、启动时读取，**下次进入游戏即生效**。`common/sound_settings.py` 统一读写与施加音量：按键/转盘/宠物等音效走 `sfx` 通道，欢迎语和朗读走 `voice` 通道；"语音提示"关闭后语音一律不播放、按键音保留。界面风格切换不会覆盖这些设置。
 
 排查：在 Python 里 `tts.Speaker().status()` 可查看当前后端、模型路径、是否就绪。可选地，用 `python tools/generate_tts.py` 给当前题库批量预生成 ogg 以消除合成延迟（需开发机装 piper + ffmpeg；已存在自动跳过，`--force` 全部重生成）。
 
@@ -61,6 +63,8 @@ Pi Zero 2 W 上实时语音合成一句要几秒，所以**全部音效/语音�
 ### 1. 宝可梦图鉴
 
 浏览第 1 至第 4 世代共 493 只宝可梦，查看图片和资料。可以按世代及已发现、未发现状态筛选，调整显示顺序和界面风格；查看过的宝可梦会自动记为已发现，发现记录和设置会保存。
+
+主界面新增**已收藏**选项卡（红色爱心图标），只看收藏过的宝可梦。浏览页**长按 K2（约 0.6 秒）收藏/取消收藏**当前显示的宝可梦（短按 K2 仍是"上一只"），顶栏用爱心图标显示状态：已收藏=实心爱心 + "已收藏"，未收藏=空心爱心 + "长按K2收藏"提示；收藏记录持久保存在 `pokedex_data/favorites.json`，与"已发现"记录相互独立。
 
 ### 2. 头脑挑战
 

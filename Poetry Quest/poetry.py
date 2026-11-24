@@ -535,7 +535,7 @@ def main():
 				actions = ["HOLD_K3" if action == "QUIT" else action for action in buttons.poll()]
 			for action in actions:
 				if sfx_helper.is_press(action):
-					sound.button()
+					sound.button()  # 每次短按都有按键音反馈
 				if action == "EXIT" or (game is None and action in ("BACK", "K3")):
 					running = False
 					break

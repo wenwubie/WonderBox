@@ -26,6 +26,7 @@ import os
 import time
 
 from common import audio as audio_output
+from common import sound_settings
 
 COMMON_MEDIA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             "common", "media")
@@ -67,6 +68,7 @@ class SFX:
         self.sounds = {}
         self.enabled = False
         self.button_enabled = True
+        self.voice_enabled = sound_settings.voice_enabled()  # 语音提示总开关
         self._last_button = 0.0
         self._loop_channel = None  # 转盘等循环音的独立声道
         if audio_output.is_no_audio():
@@ -78,6 +80,8 @@ class SFX:
                 if name not in self.sounds:
                     sound = self._load(directory, name)
                     if sound is not None:
+                        # 欢迎语属语音通道，其余（按键/转盘/宠物等）属音效通道
+                        sound_settings.apply(sound, "voice" if name == "welcome" else "sfx")
                         self.sounds[name] = sound
         self.enabled = bool(self.sounds)
 
@@ -123,8 +127,9 @@ class SFX:
         self.play("button")
 
     def welcome(self):
-        """进入功能时的语音欢迎提示。"""
-        self.play("welcome")
+        """进入功能时的语音欢迎提示；语音提示关闭时不播放。"""
+        if self.voice_enabled:
+            self.play("welcome")
 
     def loop_start(self, name):
         """循环播放某音效（转盘转动等），用独立声道，可 loop_stop 停止。"""

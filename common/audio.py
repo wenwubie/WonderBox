@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import os
 
+from common import sound_settings
+
 # =============================================================================
 # 音频目标开关（改这一处即可全项目生效）
 #   None  : 自动，跟随 spi_lcd 的模拟/真机判断
@@ -166,7 +168,9 @@ class GameAudio:
             return None
         try:
             import pygame
-            return pygame.mixer.Sound(path)
+            sound = pygame.mixer.Sound(path)
+            sound_settings.apply(sound, "sfx")
+            return sound
         except Exception:
             return None
 

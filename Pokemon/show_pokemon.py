@@ -11,8 +11,10 @@
 
 按键:
     K1 (GPIO5): 下一页
-    K2 (GPIO23): 切换到上一只宝可梦
-    K3 (GPIO24): 切换到下一只宝可梦
+    K2 (GPIO23): 短按切换到上一只宝可梦; 长按 0.6 秒收藏/取消收藏当前宝可梦
+    K3 (GPIO24): 切换到下一只宝可梦(长按返回)
+
+收藏记录持久保存于 pokedex_data/favorites.json, 顶栏显示当前是否已收藏。
 
 本机模拟模式: 键盘 1/2/3 代替 K1/K2/K3, Esc 退出。
 截图模式: python show_pokemon.py --screenshot  (渲染两页样例存 PNG 后退出)
@@ -42,6 +44,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "pokedex_data", "pokemon_platinum.json")
 IMG_DIR = os.path.join(BASE_DIR, "pokedex_data", "images")
 SETTINGS_FILE = os.path.join(BASE_DIR, "pokedex_data", "settings.json")
+FAVORITES_FILE = os.path.join(BASE_DIR, "pokedex_data", "favorites.json")
+FAVORITE_HOLD_SECONDS = 0.6   # 长按 K2 收藏/取消收藏的秒数(短按仍是"上一只")
 
 FB_WIDTH = spi_lcd.FB_WIDTH
 FB_HEIGHT = spi_lcd.FB_HEIGHT
@@ -160,6 +164,40 @@ def load_selected_generations():
     return normalize_generations(generations)
 
 
+# ---------------------------------------------------------------------------
+# 收藏记录(持久化, 与"已发现"相互独立)
+# ---------------------------------------------------------------------------
+def load_favorites(path=None):
+    """读取收藏的宝可梦 id 集合; 文件缺失/损坏时返回空集合, 并过滤无效 id。"""
+    try:
+        with open(path or FAVORITES_FILE, encoding="utf-8") as favorites_file:
+            data = json.load(favorites_file)
+        ids = set(data.get("ids", [])) if isinstance(data, dict) else set()
+    except (OSError, ValueError, TypeError):
+        ids = set()
+    valid = {pokemon["id"] for pokemon in POKEMONS}
+    return {value for value in ids if isinstance(value, int) and value in valid}
+
+
+def save_favorites(ids, path=None):
+    with open(path or FAVORITES_FILE, "w", encoding="utf-8") as favorites_file:
+        json.dump({"ids": sorted(ids)}, favorites_file, ensure_ascii=False)
+
+
+def is_favorite(pokemon, favorites):
+    return pokemon["id"] in favorites
+
+
+def toggle_favorite(pokemon, favorites):
+    """原地切换收藏状态, 返回 (是否已收藏, 新的集合)。"""
+    pid = pokemon["id"]
+    if pid in favorites:
+        favorites.remove(pid)
+        return False, favorites
+    favorites.add(pid)
+    return True, favorites
+
+
 # 属性相克表(由 crawl_pokemon_platinum.py 生成); 缺失时跳过克制页
 TYPE_CHART_FILE = os.path.join(BASE_DIR, "pokedex_data", "type_chart.json")
 TYPE_CHART = None          # {攻击属性: {防御属性: 倍率}}
@@ -263,15 +301,57 @@ def draw_badge_flow(names, x, y, max_w, max_rows=3):
 # ---------------------------------------------------------------------------
 # 页面绘制
 # ---------------------------------------------------------------------------
-def draw_top_bar(p, page, pages):
+def draw_heart_icon(cx, cy, size, color, hollow=False, background=None):
+    """画收藏爱心(两个上圆弧 + 下尖角)。
+
+    hollow=True 时用底色再画一圈稍小的爱心, 形成"未收藏"的空心描边效果。
+    不依赖字体里的 ♥ 字符, 真机 wqy 字体也能正常显示。
+    """
+    def heart(fill, scale):
+        r = size * scale / 2.0
+        top = cy - r * 0.35
+        pygame.draw.circle(screen, fill, (int(cx - r * 0.4), int(top)),
+                           max(1, int(r * 0.5)))
+        pygame.draw.circle(screen, fill, (int(cx + r * 0.4), int(top)),
+                           max(1, int(r * 0.5)))
+        pygame.draw.polygon(screen, fill, [(int(cx - r * 0.9), int(top)),
+                                           (int(cx + r * 0.9), int(top)),
+                                           (int(cx), int(cy + r * 0.95))])
+    if hollow:
+        heart(color, 1.0)
+        heart(background or BAR_COLOR, 0.62)
+    else:
+        heart(color, 1.0)
+
+
+def draw_top_bar(p, page, pages, favorites=None):
     pygame.draw.rect(screen, BAR_COLOR, (0, 0, FB_WIDTH, 24))
     t1 = font_small.render("#%03d %s" % (p["id"], p["name_zh"]), True, TEXT_COLOR)
     t2 = font_small.render("%d/%d" % (page + 1, pages), True, ACCENT_COLOR)
     screen.blit(t1, (8, 4))
     screen.blit(t2, (FB_WIDTH - t2.get_width() - 8, 4))
 
+    # 收藏状态: 顶栏中央用"爱心图标 + 文字", 已收藏=实心亮色, 未收藏=空心
+    # 并兼作操作提示。收藏一律用爱心表示, 与"已发现"的星星区分开。
+    active = favorites if favorites is not None else _favorite_ids
+    fav = is_favorite(p, active)
+    label = "已收藏" if fav else "长按K2收藏"
+    color = ACCENT_COLOR if fav else SUB_COLOR
+    left_end = 8 + t1.get_width()
+    right_start = FB_WIDTH - t2.get_width() - 8
+    icon_w = 16
+    label = fit_text(label, font_tiny, max(16, right_start - left_end - 8 - icon_w))
+    tf = font_tiny.render(label, True, color)
+    group_w = icon_w + tf.get_width()
+    x = left_end + max(0, (right_start - left_end - group_w) // 2)
+    draw_heart_icon(x + icon_w // 2, 12, 13, color, hollow=not fav)
+    screen.blit(tf, (x + icon_w, 5))
+
 
 _footer_button_rects = []
+# 当前浏览会话的收藏 id 集合: browse() 会指向自己持有的 set,
+# render()/draw_top_bar() 在不显式传 favorites 时读它, 保持 render(p, page) 两参兼容。
+_favorite_ids = set()
 
 
 def draw_bottom_bar():
@@ -304,7 +384,7 @@ def draw_type_badge(x, y, type_name):
     return x + w + 5
 
 
-def draw_overview(p):
+def draw_overview(p, favorites=None):
     """第 1 页: 概览。横屏=左图右信息, 竖屏=图上信息下。"""
     locs = p.get("platinum_locations") or []
 
@@ -395,7 +475,7 @@ def draw_overview(p):
             if y > FB_HEIGHT - 40:
                 break
 
-    draw_top_bar(p, 0, total_pages(p))
+    draw_top_bar(p, 0, total_pages(p), favorites)
     draw_bottom_bar()
 
 
@@ -427,7 +507,7 @@ def _build_move_cols():
 MOVE_COLS, MOVE_COL_KEYS = _build_move_cols()
 
 
-def draw_moves(p, move_page):
+def draw_moves(p, move_page, favorites=None):
     """第 2+ 页: 全屏招式表(横竖屏自适应, 铺到底部)。"""
     moves = p["moves"]
     start = move_page * MOVES_PER_PAGE
@@ -473,12 +553,12 @@ def draw_moves(p, move_page):
         t = font_small.render("这只宝可梦没有招式数据", True, SUB_COLOR)
         screen.blit(t, (FB_WIDTH // 2 - t.get_width() // 2, 100))
 
-    draw_top_bar(p, 1 + move_page, total_pages(p))
+    draw_top_bar(p, 1 + move_page, total_pages(p), favorites)
     if spi_lcd.is_simulate():
         draw_bottom_bar()
 
 
-def draw_matchups(p):
+def draw_matchups(p, favorites=None):
     """最后一页: 属性克制关系(克制谁 / 被谁克制 / 抵抗 / 免疫)。"""
     strong, weak, resist, immune = type_matchups(p)
     pages = total_pages(p)
@@ -511,19 +591,21 @@ def draw_matchups(p):
         t = font_small.render("完全免疫: " + "、".join(immune), True, ACCENT_COLOR)
         screen.blit(t, (6, y + 2))
 
-    draw_top_bar(p, pages - 1, pages)
+    draw_top_bar(p, pages - 1, pages, favorites)
     draw_bottom_bar()
 
 
-def render(p, page):
+def render(p, page, favorites=None):
     """绘制第 page 页(0=概览, 中间=招式页, 末页=属性克制)。"""
+    if favorites is None:
+        favorites = _favorite_ids
     screen.fill(BG_COLOR)
     if page == 0:
-        draw_overview(p)
+        draw_overview(p, favorites)
     elif TYPE_CHART and page == total_pages(p) - 1:
-        draw_matchups(p)
+        draw_matchups(p, favorites)
     else:
-        draw_moves(p, page - 1)
+        draw_moves(p, page - 1, favorites)
     return spi_lcd.present(poll_events=False)
 
 
@@ -599,17 +681,30 @@ def handle_event(name, state, mon_list=None):
 # ---------------------------------------------------------------------------
 # 浏览主循环: 可独立运行, 也可被 pokemon.py 当作"浏览页"调用
 # ---------------------------------------------------------------------------
-def input_actions(mouse_action, hold=None):
+def input_actions(mouse_action, hold=None, fav_hold=None):
+    """采集一帧动作。
+
+    hold     : K3 长按手势(短按 K3 / 长按 BACK)
+    fav_hold : K2 长按手势(短按 K2 / 长按 FAVORITE); 长按期间会屏蔽
+               poll_buttons 产生的 K2 连发, 避免误翻到上一只。
+    """
     actions = []
     if gpio is not None:
-        actions = [name for name in poll_buttons() if hold is None or name != "K3"]
+        blocked = set()
         if hold is not None:
-            source = ("gpio", "K3")
-            if gpio.input(BUTTONS["K3"]) == gpio.LOW:
-                hold.press(source)
-                action = hold.poll()
+            blocked.add("K3")
+        if fav_hold is not None:
+            blocked.add("K2")
+        actions = [name for name in poll_buttons() if name not in blocked]
+        for gesture, key in ((hold, "K3"), (fav_hold, "K2")):
+            if gesture is None:
+                continue
+            source = ("gpio", key)
+            if gpio.input(BUTTONS[key]) == gpio.LOW:
+                gesture.press(source)
+                action = gesture.poll()
             else:
-                action = hold.release(source)
+                action = gesture.release(source)
             if action:
                 actions.append(action)
         return actions if spi_lcd.pump() else None
@@ -624,29 +719,52 @@ def input_actions(mouse_action, hold=None):
             action = handle_key(event.key)
         elif event.type == pygame.MOUSEBUTTONDOWN:
             action = mouse_action(event)
-        if hold is not None:
+        # 两路长按手势不能串联覆盖: 按下事件交给"拥有该键"的手势(它可能吞掉
+        # 短按), 松开事件则两路都跑 release, 取第一个有效结果。否则 K3 松开
+        # 产生的 "K3" 会被 K2 手势的 release(None) 冲掉。
+        if fav_hold is not None and action == "K2":
+            action = fav_hold.process_event(event, action)
+        elif hold is not None and action == "K3":
             action = hold.process_event(event, action)
+        else:
+            original = action
+            action = None
+            for gesture in (hold, fav_hold):
+                if gesture is not None:
+                    emitted = gesture.process_event(event, original)
+                    if emitted and action is None:
+                        action = emitted
+            if action is None:
+                action = original
         if action:
             actions.append(action)
-    if hold is not None:
-        action = hold.poll()
-        if action:
-            actions.append(action)
+    for gesture in (hold, fav_hold):
+        if gesture is not None:
+            action = gesture.poll()
+            if action:
+                actions.append(action)
     return actions
 
 
-def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None):
+def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None,
+           favorites=None, fav_hold=None, favorites_file=None):
     """浏览模式主循环。
 
     参数:
       mon_list  : 允许浏览的宝可梦列表(缺省=全部); K2/K3 在此列表内切换
       on_viewed : 每次展示某只宝可梦时的回调 on_viewed(pokemon)
       back_hold : K3 按住超过该秒数返回(调用方); 短按 K3 仍是"下一只"
+      favorites : 收藏 id 集合(原地修改并即时落盘); 缺省从 favorites.json 读取
+      fav_hold  : K2 长按手势, 缺省用 SimulatedHold("K2", "FAVORITE", 0.6)
+      favorites_file : 覆盖收藏文件路径(主界面传入, 便于与设置同目录/测试隔离)
+
+    长按 K2 收藏/取消收藏当前宝可梦(短按 K2 仍是"上一只"), 顶栏显示收藏状态。
 
     返回: "back"=长按K3返回; "quit"=窗口关闭/Esc。
 
     独立运行(python show_pokemon.py)时, "back"/"quit" 都直接退出程序。
     """
+    global _favorite_ids
     mon_list = list(POKEMONS if mon_list is None else mon_list)
     if not mon_list:
         return "quit"
@@ -654,6 +772,11 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None):
     state = {"idx": 0, "page": 0}
     if hold is None:
         hold = spi_lcd.SimulatedHold("K3", "BACK", back_hold)
+    if fav_hold is None:
+        fav_hold = spi_lcd.SimulatedHold("K2", "FAVORITE", FAVORITE_HOLD_SECONDS)
+    if favorites is None:
+        favorites = load_favorites(favorites_file)
+    _favorite_ids = favorites
 
     sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
     speaker = tts.Speaker(pregen_dir=os.path.join(BASE_DIR, "media", "tts"))
@@ -662,10 +785,11 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None):
         return mon_list[state["idx"]]
 
     def say_name():
-        """朗读当前宝可梦名字（本地 ogg，命中即播）。"""
+        """朗读当前宝可梦名字（本地 ogg，命中即播）；返回是否真的播放。"""
         name = str(cur().get("name_zh", "")).strip()
         if name:
-            speaker.speak(name)
+            return speaker.speak(name)
+        return False
 
     def redraw():
         r = render(cur(), state["page"])
@@ -677,15 +801,25 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None):
     say_name()  # 进入浏览时读第一只的名字
     clock = pygame.time.Clock()
     while running:
-        actions = input_actions(lambda event: spi_lcd.button_from_mouse(event, _footer_button_rects), hold)
+        actions = input_actions(
+            lambda event: spi_lcd.button_from_mouse(event, _footer_button_rects),
+            hold, fav_hold)
         if actions is None:
             break
         for action in actions:
             if sfx_helper.is_press(action):
-                sound.button()
+                sound.button()  # 每次短按都有按键音反馈
             if action == "BACK":
                 sound.close()
                 return "back"
+            if action == "FAVORITE":
+                favored, favorites = toggle_favorite(cur(), favorites)
+                save_favorites(favorites, favorites_file)
+                sound.play("correct") if favored else sound.button()
+                running = redraw()
+                if not running:
+                    break
+                continue
             idx_before = state["idx"]
             handle_event(action, state, mon_list)
             if state["idx"] != idx_before:
@@ -706,7 +840,8 @@ def run_screenshots():
         samples.append((5, total_pages(POKEMONS[5]) - 1))     # 克制页(单属性)
         samples.append((7, total_pages(POKEMONS[7]) - 1))     # 克制页(双属性)
     for i, (idx, page) in enumerate(samples):
-        render(POKEMONS[idx], page)
+        # 第 1 张顺便演示"已收藏"顶栏状态
+        render(POKEMONS[idx], page, {POKEMONS[0]["id"]} if i == 0 else set())
         out = os.path.join(BASE_DIR, "_shot_%d.png" % i)
         pygame.image.save(screen, out)
         print("已保存:", out)

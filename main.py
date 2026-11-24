@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 
+from common import audio as audio_output, sfx as sfx_helper, sound_settings
 from common import spi_lcd
 from common import ui_theme
 from common.button_input import BUTTON_PINS, GPIOButtons, QUIT_HOLD_SECONDS
@@ -63,6 +64,14 @@ DIRECT_GAMES = tuple(game for game in GAMES if game.path not in CATEGORIZED_PATH
 HOME_GAMES = DIRECT_GAMES + tuple(category.as_game() for category in GAME_CATEGORIES)
 MINI_GAMES_HOME_INDEX = len(DIRECT_GAMES)
 
+# 设置页条目：(键, 名称)。风格由 ui_theme 管理，其余由 sound_settings 管理。
+SETTINGS_ITEMS = (
+    ("style", "界面风格"),
+    ("sfx_volume", "按键音量"),
+    ("voice_volume", "语音音量"),
+    ("voice_enabled", "语音提示"),
+)
+
 
 class LauncherState:
     def __init__(self, show_declaration=False):
@@ -72,6 +81,8 @@ class LauncherState:
         self.notice = ""
         self.show_declaration = show_declaration
         self.show_settings = False
+        self.settings_selection = 0
+        self.settings_editing = False
         self.show_category = None
         self.return_selection = MINI_GAMES_HOME_INDEX
 
@@ -117,12 +128,35 @@ class LauncherState:
                 return "EXIT"
             return "ACCEPT_DECLARATION" if action == "K3" else None
         if self.show_settings:
-            if action == "K1":
-                return "STYLE_PREV"
-            if action == "K2":
-                return "STYLE_NEXT"
-            if action == "K3":
+            count = len(SETTINGS_ITEMS)
+            if action == "POWER":  # 长按 K3 直接返回主界面
+                self.settings_editing = False
                 return "CLOSE_SETTINGS"
+            if self.settings_editing:
+                if action == "K1":
+                    return "SETTING_STEP_DOWN"
+                if action == "K2":
+                    return "SETTING_STEP_UP"
+                if action == "K3":
+                    self.settings_editing = False
+                    return None
+                return None
+            # 浏览模式：K1/K2 切换设置项，K3 进入调节
+            if action == "K1":
+                self.settings_selection = (self.settings_selection - 1) % count
+                return None
+            if action == "K2":
+                self.settings_selection = (self.settings_selection + 1) % count
+                return None
+            if action == "K3":
+                self.settings_editing = True
+                return None
+            if action and action.startswith("SELECT_"):
+                index = int(action[-1:])
+                if 0 <= index < count:
+                    self.settings_selection = index
+                    self.settings_editing = True
+                return None
             return None
         if action == "BACK" and self.show_category is not None:
             self.show_category = None
@@ -374,10 +408,12 @@ class LauncherDisplay:
             pygame.draw.line(self.screen, PAPER, (center[0] - 7, center[1]),
                              (center[0] - 1, center[1] + 6), 2)
 
-    def draw_footer(self, confirming, declaration=False, settings=False):
+    def draw_footer(self, confirming, declaration=False, settings=False,
+                    settings_editing=False):
         pygame.draw.rect(self.screen, FOOTER_BG, (0, self.footer_top, self.width, 27))
         labels = (("", "", "确认") if declaration else
-                  ("上一个", "下一个", "返回") if settings else
+                  ("上一项", "下一项", "调整") if settings and not settings_editing else
+                  ("减小", "增大", "确认") if settings else
                   ("切换", "切换", "确认") if confirming else ("上一项", "下一项", "进入"))
         for label, rect in zip(labels, self.buttons):
             if label:
@@ -386,8 +422,8 @@ class LauncherDisplay:
     def draw(self, state):
         self.screen.fill(BACKGROUND)
         if state.show_settings:
-            self.draw_settings_page()
-            self.draw_footer(False, settings=True)
+            self.draw_settings_page(state)
+            self.draw_footer(False, settings=True, settings_editing=state.settings_editing)
             return
         for dot_y in range(10, self.footer_top, 24):
             for dot_x in range(12, self.width, 24):
@@ -486,19 +522,45 @@ class LauncherDisplay:
             pygame.draw.line(self.screen, color, start, end, width)
         pygame.draw.circle(self.screen, backdrop, center, hole)   # 中心孔露出底色
 
-    def draw_settings_page(self):
+    def setting_value(self, key):
+        """设置项当前显示值。"""
+        if key == "style":
+            return ui_theme.style_name()
+        if key == "voice_enabled":
+            return "开" if sound_settings.voice_enabled() else "关"
+        return "%d%%" % sound_settings.settings()[key]
+
+    def draw_settings_page(self, state):
         self.text("Wonder Box", self.brand_font, LIGHT, (10, 7))
         self.text("设置", self.chinese_font, LIGHT_TEAL, (11, 30 if self.portrait else 27))
         pygame.draw.line(self.screen, DARK_LINE, (10, self.section_y - 6), (self.width - 10, self.section_y - 6))
-        panel = pygame.Rect(12, self.section_y + 34, self.width - 24, 72)
-        pygame.draw.rect(self.screen, PAPER, panel, border_radius=8)
-        pygame.draw.rect(self.screen, TEAL, panel, 2, border_radius=8)
-        self.text("界面风格", self.small_font, MUTED, (panel.x + 12, panel.y + 10))
-        self.centered(ui_theme.style_name(), self.dialog_font, INK, panel.center)
-        self.centered("< K1 / K2 切换 >", self.small_font, LIGHT_MUTED,
-                      (self.width // 2, panel.bottom + 16))
-        self.centered("选择后立即保存", self.small_font, LIGHT_MUTED,
-                      (self.width // 2, panel.bottom + 34))
+
+        top = self.section_y + 6
+        bottom = self.footer_top - (24 if self.portrait else 22)
+        count = len(SETTINGS_ITEMS)
+        gap = 5
+        row_height = (bottom - top - gap * (count - 1)) // count
+        self.setting_rows = []
+        for index, (key, label) in enumerate(SETTINGS_ITEMS):
+            rect = pygame.Rect(12, top + index * (row_height + gap),
+                               self.width - 24, row_height)
+            self.setting_rows.append(rect)
+            selected = index == state.settings_selection
+            pygame.draw.rect(self.screen, SELECTED if selected else PAPER, rect, border_radius=6)
+            pygame.draw.rect(self.screen, TEAL if selected else LINE,
+                             rect, 2 if selected else 1, border_radius=6)
+            text_y = rect.centery - self.small_font.get_height() // 2
+            self.text(label, self.small_font, INK if selected else MUTED, (rect.x + 10, text_y))
+            value = self.setting_value(key)
+            image = self.small_font.render(value, True, TEAL if selected else MUTED)
+            self.screen.blit(image, image.get_rect(midright=(rect.right - 10, rect.centery)))
+            if selected:
+                marker = ("K1 减 / K2 加 / K3 确认" if state.settings_editing
+                          else "K3 调节 · 长按 K3 退出设置")
+                hint_y = bottom + 2  # 固定在行区下方预留条，避免被其它卡片遮住
+                if hint_y + self.small_font.get_height() <= self.footer_top:
+                    self.centered(marker, self.small_font, LIGHT_MUTED,
+                                  (self.width // 2, hint_y + self.small_font.get_height() // 2))
 
     def draw_declaration(self):
         self.centered("使用声明", self.dialog_font, LIGHT, (self.width // 2, self.section_y + 12))
@@ -601,6 +663,9 @@ def event_action(event, display, state):
                 return "K3"
             return None
         if state.show_settings:
+            for index, rect in enumerate(getattr(display, "setting_rows", [])):
+                if rect.collidepoint(position):
+                    return "SELECT_%d" % index
             for action, rect in zip(("K1", "K2", "K3"), display.buttons):
                 if rect.collidepoint(position):
                     return action
@@ -629,6 +694,7 @@ class LauncherApp:
         self.buttons = None
         self.hold = None
         self.clock = None
+        self.sound = None  # 主界面按键音；open() 里创建（需 mixer 已就绪）
         self.simulate = True
         self.release_gate = False
         self.running = True
@@ -640,6 +706,7 @@ class LauncherApp:
         self.display = LauncherDisplay(self.screen)
         self.hold = spi_lcd.SimulatedHold("K3", "POWER", QUIT_HOLD_SECONDS)
         self.clock = pygame.time.Clock()
+        self.sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
         self.release_gate = False
         if self.simulate:
             pygame.display.set_caption("Wonder Box 奇趣宝盒")
@@ -655,11 +722,15 @@ class LauncherApp:
 
     def close(self):
         try:
-            if self.buttons is not None:
-                self.buttons.cleanup()
-                self.buttons = None
+            if self.sound is not None:
+                self.sound.close()
         finally:
-            pygame.quit()
+            try:
+                if self.buttons is not None:
+                    self.buttons.cleanup()
+                    self.buttons = None
+            finally:
+                pygame.quit()
 
     def poll_actions(self):
         if self.buttons is not None:
@@ -713,12 +784,24 @@ class LauncherApp:
         ui_theme.set_style(names[index])  # 立即持久化
         apply_theme()
 
+    def step_setting(self, direction):
+        """调节当前选中的设置项；风格/开关切换，音量按步长增减。"""
+        key = SETTINGS_ITEMS[self.state.settings_selection][0]
+        if key == "style":
+            self.cycle_style(direction)
+        elif key == "voice_enabled":
+            sound_settings.toggle_voice()
+        else:
+            sound_settings.step(key, direction)
+
     def run(self):
         while self.running:
             self.display.draw(self.state)
             if not spi_lcd.present(poll_events=False):
                 break
             for action in self.poll_actions():
+                if self.sound is not None and sfx_helper.is_press(action):
+                    self.sound.button()  # 主界面每次短按都有按键音
                 if action == "EXIT":
                     self.running = False
                     break
@@ -731,17 +814,19 @@ class LauncherApp:
                     break
                 if result == "SETTINGS":
                     self.state.show_settings = True
+                    self.state.settings_editing = False
                     break
                 if result == "CLOSE_SETTINGS":
                     self.state.show_settings = False
+                    self.state.settings_editing = False
                     break
                 if result in ("OPEN_CATEGORY", "CLOSE_CATEGORY"):
                     break
-                if result == "STYLE_PREV":
-                    self.cycle_style(-1)
+                if result == "SETTING_STEP_DOWN":
+                    self.step_setting(-1)
                     break
-                if result == "STYLE_NEXT":
-                    self.cycle_style(1)
+                if result == "SETTING_STEP_UP":
+                    self.step_setting(1)
                     break
                 if result == "LAUNCH":
                     self.play()
@@ -764,6 +849,7 @@ def main():
         os.environ["POKEMON_PORTRAIT"] = "1"
     else:
         os.environ.setdefault("POKEMON_PORTRAIT", "1")
+    audio_output.prepare()  # 主界面要出按键音，必须在 spi_lcd.init() 前声明
     app = LauncherApp()
     print("Wonder Box 奇趣宝盒: K1/K2 选择，K3 进入；长按 K3 打开关机确认。")
     try:

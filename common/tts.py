@@ -23,6 +23,8 @@ import os
 import threading
 import time
 
+from common import sound_settings
+
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.dirname(_MODULE_DIR)
 
@@ -94,7 +96,8 @@ class Speaker:
     def __init__(self, pregen_dir=None, _mixer_check=None):
         self.pregen_dir = pregen_dir or PREGEN_DIR
         self._mixer_check = _mixer_check
-        self.enabled = pregen_ready(self.pregen_dir) and not is_muted()
+        self.voice_enabled = sound_settings.voice_enabled()  # 语音提示总开关
+        self.enabled = pregen_ready(self.pregen_dir) and not is_muted() and self.voice_enabled
         self._generation = 0
         self._lock = threading.Lock()
         self._threads = set()
@@ -111,6 +114,7 @@ class Speaker:
     def status(self):
         return {
             "enabled": self.enabled,
+            "voice_enabled": self.voice_enabled,
             "pregen_dir": self.pregen_dir,
             "pregen_ready": pregen_ready(self.pregen_dir),
             "muted": is_muted(),
@@ -217,6 +221,7 @@ class Speaker:
                 except Exception as error:
                     self._load_error = "加载音频失败: %s" % error
                     return
+                sound_settings.apply(sound, "voice")
                 with self._lock:
                     if generation != self._generation:
                         return
@@ -272,6 +277,7 @@ class Speaker:
             except Exception as error:
                 self._load_error = "加载音频失败: %s" % error
                 return
+            sound_settings.apply(sound, "voice")
             with self._lock:
                 if generation != self._generation:
                     return

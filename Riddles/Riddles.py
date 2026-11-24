@@ -627,7 +627,7 @@ def main():
 				actions = buttons.poll()
 			for action in actions:
 				if sfx_helper.is_press(action):
-					sound.button()
+					sound.button()  # 每次短按都有按键音反馈
 				if action == "QUIT":
 					running = False
 					break

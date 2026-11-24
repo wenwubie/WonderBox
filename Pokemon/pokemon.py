@@ -9,15 +9,18 @@
     全部(n)     浏览所选世代的宝可梦
     未发现(n)   只看还没查看过的
     已发现(m)   只看已查看过的
+    已收藏(k)   只看长按 K2 收藏过的
     设置        显示顺序 + 第 1～4 世代筛选(界面风格在主界面"设置"里全局选择)
                 + 重置发现(两次 K3 确认清空全部世代的发现记录)
                 底部一行: 左 取消 | 右 保存
 
 按键:
     主界面:  K1 (GPIO5) 向上    K2 (GPIO23) 向下    K3 (GPIO24) 确定
-    浏览页:  K1 翻页  K2 上一只  K3 下一只;  长按 K3 返回主界面
-    查看过的宝可梦自动记为"已发现", 持久保存于 pokedex_data/discovered.json
+    浏览页:  K1 翻页  K2 上一只  K3 下一只;  长按 K2 收藏/取消收藏,
+             长按 K3 返回主界面
 
+查看过的宝可梦自动记为"已发现", 持久保存于 pokedex_data/discovered.json;
+收藏记录持久保存于 pokedex_data/favorites.json。
 设置持久保存于 pokedex_data/settings.json, 一直有效。
 """
 import json
@@ -41,6 +44,7 @@ BASE_DIR = sp.BASE_DIR
 DATA_DIR = os.path.join(BASE_DIR, "pokedex_data")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 DISCOVERED_FILE = os.path.join(DATA_DIR, "discovered.json")
+FAVORITES_FILE = os.path.join(DATA_DIR, "favorites.json")
 
 # ---------------------------------------------------------------------------
 # 界面风格: 全局统一, 由主界面"设置"选择(定义见 common/ui_theme.py)
@@ -93,6 +97,15 @@ def save_discovered(ids):
         json.dump({"ids": sorted(ids)}, f, ensure_ascii=False)
 
 
+def load_favorites():
+    """收藏集合的读写交给 show_pokemon 统一实现(浏览器独立运行也能用)。"""
+    return sp.load_favorites(FAVORITES_FILE)
+
+
+def save_favorites(ids):
+    sp.save_favorites(ids, FAVORITES_FILE)
+
+
 def generation_pokemon(settings):
     """返回所选世代的宝可梦；旧设置默认包含全部世代。"""
     return sp.generation_pokemon(settings.get("generations"))
@@ -104,17 +117,27 @@ def menu_counts(settings, discovered):
     return len(visible), len(visible) - found, found
 
 
+def favorite_count(settings, favorites):
+    """所选世代中已收藏的数量(与主界面其它计数口径一致)。"""
+    return sum(pokemon["id"] in favorites for pokemon in generation_pokemon(settings))
+
+
 _last_random_order = None
 
 
-def build_list(mode, settings, discovered):
-    """按世代和发现状态过滤，并按设置排序。mode: all / unseen / found"""
+def build_list(mode, settings, discovered, favorites=None):
+    """按世代和发现/收藏状态过滤，并按设置排序。
+
+    mode: all / unseen / found / fav(已收藏)
+    """
     global _last_random_order
     lst = generation_pokemon(settings)
     if mode == "found":
         lst = [pokemon for pokemon in lst if pokemon["id"] in discovered]
     elif mode == "unseen":
         lst = [pokemon for pokemon in lst if pokemon["id"] not in discovered]
+    elif mode == "fav":
+        lst = [pokemon for pokemon in lst if pokemon["id"] in (favorites or set())]
     order = settings.get("order", "正序")
     if order == "倒序":
         lst.reverse()
@@ -180,6 +203,10 @@ def draw_icon(kind, cx, cy, st):
             pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
         pygame.draw.polygon(screen, st["accent"], pts)
         pygame.draw.polygon(screen, darker(st["accent"], 0.7), pts, 2)
+    elif kind == "heart":
+        # 已收藏: 与浏览页顶栏共用同一个爱心绘制函数, 风格统一
+        color = ui_theme.pick(st["panel"], (232, 96, 96))
+        sp.draw_heart_icon(cx, cy, 20, color)
     elif kind == "gear":
         pygame.draw.circle(screen, st["panel_hi"], (cx, cy), r - 1)
         for k in range(8):
@@ -215,13 +242,15 @@ def draw_title(st, title, sub, y):
 # 主界面 / 设置页 绘制
 # ---------------------------------------------------------------------------
 def _card_layout(n):
-    """n 张卡片: 返回 (x0, y0, 卡宽, 卡高, 间距), 垂直居中于标题与底栏之间。"""
-    if PORTRAIT:
-        card_h, gap = 42, 12
-        top, bottom = 92, FB_HEIGHT - 26
+    """n 张卡片: 返回 (x0, y0, 卡宽, 卡高, 间距), 垂直居中于标题与底栏之间。
+
+    主菜单从 4 项增加到 5 项(多了"已收藏"), 卡片自动压缩以免超出底栏。
+    """
+    if n >= 5:
+        card_h, gap = (34, 6) if PORTRAIT else (24, 4)
     else:
-        card_h, gap = 30, 6
-        top, bottom = 72, FB_HEIGHT - 24
+        card_h, gap = (42, 12) if PORTRAIT else (30, 6)
+    top, bottom = (92, FB_HEIGHT - 26) if PORTRAIT else (72, FB_HEIGHT - 24)
     card_w = min(240, FB_WIDTH - 12)
     total = n * card_h + (n - 1) * gap
     y0 = top + max(0, (bottom - top - total) // 2)
@@ -229,20 +258,25 @@ def _card_layout(n):
 
 
 def draw_menu(settings, sel, counts, t):
-    """主界面: 全部/未发现/已发现/设置。counts=(总数, 未发现, 已发现)。"""
+    """主界面: 全部/未发现/已发现/已收藏/设置。
+
+    counts=(总数, 未发现, 已发现[, 已收藏]); 第 4 项可选, 兼容旧的 3 元组调用。
+    """
     st = ui_theme.style()
     screen.fill(st["bg"])
     draw_deco(st, t)
     draw_title(st, "宝可梦图鉴", "白金版 · %d 只" % counts[0],
                20 if not PORTRAIT else 32)
 
+    fav = counts[3] if len(counts) > 3 else 0
     items = [
         ("全部", "(%d)" % counts[0], "ball"),
         ("未发现", "(%d)" % counts[1], "q"),
         ("已发现", "(%d)" % counts[2], "star"),
+        ("已收藏", "(%d)" % fav, "heart"),
         ("设置", "", "gear"),
     ]
-    x0, y0, w, h, gap = _card_layout(4)
+    x0, y0, w, h, gap = _card_layout(len(items))
     for i, (label, count, icon) in enumerate(items):
         selected = i == sel
         y = y0 + i * (h + gap)
@@ -529,34 +563,41 @@ def message_loop(text, hold):
 def main():
     settings = load_settings()
     discovered = load_discovered()
+    favorites = load_favorites()
     sel = [0]
     hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
     clock = pygame.time.Clock()
     running = True
     sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
     sound.welcome()
-    print("主界面启动: K1 上一项 / K2 下一项 / K3 确定, 长按 K3 退出; 模拟模式可点击底栏功能文字。")
+    print("主界面启动: K1 上一项 / K2 下一项 / K3 确定, 长按 K3 退出; "
+          "浏览页长按 K2 收藏, 模拟模式可点击底栏功能文字。")
+
+    MODES = ("all", "unseen", "found", "fav")
+    MENU_ITEMS = 5
 
     def on_key(name):
         nonlocal settings, running
         if name == "BACK":
             running = False
         elif name == "K1":
-            sel[0] = (sel[0] - 1) % 4
+            sel[0] = (sel[0] - 1) % MENU_ITEMS
         elif name == "K2":
-            sel[0] = (sel[0] + 1) % 4
+            sel[0] = (sel[0] + 1) % MENU_ITEMS
         elif name == "K3":
-            if sel[0] == 3:                                   # 设置
+            if sel[0] == MENU_ITEMS - 1:                       # 设置
                 updated_settings = settings_loop(settings, discovered, hold)
                 if updated_settings is None:
                     running = False
                     return
                 settings = updated_settings
-            else:                                             # 全部/未发现/已发现
-                mode = ("all", "unseen", "found")[sel[0]]
-                lst = build_list(mode, settings, discovered)
+            else:                                              # 全部/未发现/已发现/已收藏
+                mode = MODES[sel[0]]
+                lst = build_list(mode, settings, discovered, favorites)
                 if lst:
-                    sp.browse(lst, on_viewed=lambda p: discovered.add(p["id"]), hold=hold)
+                    sp.browse(lst, on_viewed=lambda p: discovered.add(p["id"]),
+                              hold=hold, favorites=favorites,
+                              favorites_file=FAVORITES_FILE)
                 else:
                     if not settings.get("generations", GENERATION_RANGES):
                         msg = "没有选择宝可梦世代\n请在设置中勾选"
@@ -564,6 +605,8 @@ def main():
                         msg = "所选世代还没有已发现\n先去 全部 里逛逛吧!"
                     elif mode == "unseen":
                         msg = "所选世代没有未发现\n全部都发现啦!"
+                    elif mode == "fav":
+                        msg = "还没有收藏的宝可梦\n浏览时长按 K2 收藏吧!"
                     else:
                         msg = "所选世代没有宝可梦\n请检查世代设置"
                     message_loop(msg, hold)
@@ -571,7 +614,7 @@ def main():
 
     try:
         while running:
-            counts = menu_counts(settings, discovered)
+            counts = menu_counts(settings, discovered) + (favorite_count(settings, favorites),)
             draw_menu(settings, sel[0], counts, time.time())
             running = sp.spi_lcd.present(poll_events=False)
             if running:
@@ -597,13 +640,14 @@ def main():
 def run_screenshots():
     settings = load_settings()
     discovered = load_discovered()
-    counts = menu_counts(settings, discovered)
+    favorites = load_favorites()
+    counts = menu_counts(settings, discovered) + (favorite_count(settings, favorites),)
 
     out = []
     original = ui_theme.style_name()
-    for i, style in enumerate(STYLE_NAMES):       # 各风格主界面
+    for i, style in enumerate(STYLE_NAMES):       # 各风格主界面(含"已收藏"项)
         ui_theme.set_style(style)
-        draw_menu(settings, i % 4, counts, time.time())
+        draw_menu(settings, i % 5, counts, time.time())
         path = os.path.join(BASE_DIR, "_menu_%d.png" % i)
         pygame.image.save(screen, path)
         out.append(path)

@@ -95,11 +95,11 @@ def style_name():
 
 
 def set_style(name):
-    """保存全局风格(立即持久化)。"""
+    """保存全局风格(立即持久化, 保留音量/语音等其它设置)。"""
     if name not in STYLES:
         return
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump({"style": name}, f, ensure_ascii=False, indent=1)
+    from common import sound_settings
+    sound_settings.update({"style": name})
 
 
 def style():
