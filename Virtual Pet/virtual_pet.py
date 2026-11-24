@@ -22,6 +22,8 @@ sys.path.insert(0, str(ROOT_DIR))
 from common import spi_lcd
 from common import ui_theme
 from common.button_input import GPIOButtons, QUIT_HOLD_SECONDS
+from common import audio as audio_output
+from common import sfx as sfx_helper
 
 SAVE_FILE = Path(__file__).resolve().parent / "data" / "pets.json"
 OWNER_NAMES = ("文武", "文怡然", "文焕然", "欧泽轩", "欧阳沐希")
@@ -1688,6 +1690,8 @@ def event_action(event, display):
 
 
 def main():
+	# 声明需要声音，须早于 pygame.init()
+	audio_output.prepare()
 	if spi_lcd.is_simulate():
 		spi_lcd.WINDOW_SCALE = 2
 		if "--landscape" in sys.argv:
@@ -1698,6 +1702,7 @@ def main():
 			os.environ.setdefault("POKEMON_PORTRAIT", "1")
 	screen = spi_lcd.init()
 	buttons = None
+	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
 	try:
 		if spi_lcd.is_simulate():
 			pygame.display.set_caption("宠物乐园")
@@ -1715,6 +1720,7 @@ def main():
 		hold = spi_lcd.SimulatedHold("K3", "BACK", QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
+		sound.welcome()
 		print("宠物乐园已启动：K1/K2 选择，K3 确定，长按 K3 返回。")
 		while running:
 			clock.tick(25)
@@ -1724,6 +1730,8 @@ def main():
 			else:
 				actions = ["BACK" if action == "QUIT" else action for action in buttons.poll()]
 			for action in actions:
+				if sfx_helper.is_press(action):
+					sound.button()
 				if action == "EXIT" or (game is None and action in ("BACK", "K3")):
 					running = False
 					break
@@ -1744,6 +1752,7 @@ def main():
 			if not spi_lcd.present(poll_events=False):
 				break
 	finally:
+		sound.close()
 		if buttons is not None:
 			buttons.cleanup()
 		pygame.quit()

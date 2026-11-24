@@ -28,6 +28,12 @@ sys.path.insert(0, os.path.dirname(BASE_DIR))
 from common import spi_lcd
 from common import ui_theme
 from common.button_input import BUTTON_PINS as BUTTONS
+from common import audio as audio_output
+from common import sfx as sfx_helper
+from common import tts
+
+# 声明需要声音，须早于下方模块级 spi_lcd.init()
+audio_output.prepare()
 
 # ---------------------------------------------------------------------------
 # 数据路径(相对本脚本所在目录)
@@ -649,8 +655,17 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None):
     if hold is None:
         hold = spi_lcd.SimulatedHold("K3", "BACK", back_hold)
 
+    sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
+    speaker = tts.Speaker(pregen_dir=os.path.join(BASE_DIR, "media", "tts"))
+
     def cur():
         return mon_list[state["idx"]]
+
+    def say_name():
+        """朗读当前宝可梦名字（本地 ogg，命中即播）。"""
+        name = str(cur().get("name_zh", "")).strip()
+        if name:
+            speaker.speak(name)
 
     def redraw():
         r = render(cur(), state["page"])
@@ -659,20 +674,28 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None):
         return r
 
     running = redraw()
+    say_name()  # 进入浏览时读第一只的名字
     clock = pygame.time.Clock()
     while running:
         actions = input_actions(lambda event: spi_lcd.button_from_mouse(event, _footer_button_rects), hold)
         if actions is None:
             break
         for action in actions:
+            if sfx_helper.is_press(action):
+                sound.button()
             if action == "BACK":
+                sound.close()
                 return "back"
+            idx_before = state["idx"]
             handle_event(action, state, mon_list)
+            if state["idx"] != idx_before:
+                say_name()  # 切换宝可梦时读名字
             running = redraw()
             if not running:
                 break
         clock.tick(30 if gpio is None else 60)
 
+    sound.close()
     return "quit"
 
 

@@ -12,6 +12,8 @@ import pygame
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import spi_lcd
 from common.button_input import GPIOButtons, QUIT_HOLD_SECONDS
+from common import audio as audio_output
+from common import sfx as sfx_helper
 
 
 ROLE_NAMES = {"wolf": "狼人", "seer": "预言家", "witch": "女巫",
@@ -878,8 +880,11 @@ def main():
 							("--portrait", "POKEMON_PORTRAIT", "1"), ("--landscape", "POKEMON_PORTRAIT", "0")):
 		if arg in sys.argv:
 			os.environ[key] = value
+	# 声明需要声音，须早于 pygame.init()
+	audio_output.prepare()
 	screen = spi_lcd.init()
 	buttons = None
+	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
 	try:
 		if spi_lcd.is_simulate():
 			pygame.display.set_caption("狼人杀 · 主持人")
@@ -890,6 +895,7 @@ def main():
 		game = WerewolfGame()
 		display = WerewolfDisplay(screen)
 		clock = pygame.time.Clock()
+		sound.welcome()
 		while True:
 			display.draw(game)
 			if not spi_lcd.present(poll_events=False):
@@ -901,6 +907,8 @@ def main():
 			else:
 				actions = buttons.poll()
 			for action in actions:
+				if sfx_helper.is_press(action):
+					sound.button()
 				previous = game.phase
 				if game.handle(action) == "EXIT":
 					return
@@ -908,6 +916,7 @@ def main():
 					break
 			game.tick()
 	finally:
+		sound.close()
 		if buttons is not None:
 			buttons.cleanup()
 		pygame.quit()

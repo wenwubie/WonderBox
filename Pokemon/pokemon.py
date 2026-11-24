@@ -28,6 +28,7 @@ import sys
 import time
 
 import show_pokemon as sp   # 先导入: 由此完成显示初始化/字体/数据/按键(并把项目根目录加入 sys.path)
+from common import sfx as sfx_helper
 from common import ui_theme  # 全局界面风格(主界面"设置"里选择)
 import pygame
 
@@ -532,6 +533,8 @@ def main():
     hold = sp.spi_lcd.SimulatedHold("K3", "BACK", K3_HOLD_BACK)
     clock = pygame.time.Clock()
     running = True
+    sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
+    sound.welcome()
     print("主界面启动: K1 上一项 / K2 下一项 / K3 确定, 长按 K3 退出; 模拟模式可点击底栏功能文字。")
 
     def on_key(name):
@@ -575,11 +578,14 @@ def main():
                 actions = []
                 running = pump(actions.append, hold=hold)
                 for action in actions:
+                    if sfx_helper.is_press(action):
+                        sound.button()
                     on_key(action)
                     if action in ("K3", "BACK"):
                         break
             clock.tick(24)
     finally:
+        sound.close()
         if sp.gpio is not None:
             sp.gpio.cleanup()
         pygame.quit()

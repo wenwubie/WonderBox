@@ -20,9 +20,20 @@ event_action = wheel_support.event_action
 present_frame = wheel_support.present_frame
 spi_lcd = wheel_support.spi_lcd
 
+from common import audio as audio_output
+from common import sfx as sfx_helper
+from common import tts
 from common import ui_theme
 
 import pygame
+
+
+# 朗读文案前缀：题目念“请听题”，答案用语音提示内容
+SPEAK_QUESTION_PREFIX = "请听题。"
+SPEAK_ANSWER_PREFIX = "答案是。"
+
+# 预取窗口：当前题答案 + 后续 N 题的题目/答案。连按“下一题”也命中缓存。
+PREFETCH_LOOKAHEAD = 6
 
 
 class GPIOButtons(wheel_support.GPIOButtons):
@@ -34,6 +45,15 @@ def question_key(question):
 	text = unicodedata.normalize("NFKC", question).casefold()
 	return "".join(character for character in text
 				   if not character.isspace() and not unicodedata.category(character).startswith("P"))
+
+
+def all_speech_texts(riddles):
+	"""整库朗读文本（题目+答案），供空闲预热后台慢慢合成落盘。"""
+	texts = []
+	for question, answer in riddles:
+		texts.append(SPEAK_QUESTION_PREFIX + question)
+		texts.append(SPEAK_ANSWER_PREFIX + answer)
+	return texts
 
 
 def load_riddles(path=DATA_PATH):
@@ -190,6 +210,28 @@ class RiddleGame:
 	def current(self):
 		return self.riddles[self.order[self.position]] if self.position >= 0 else None
 
+	def upcoming_texts(self):
+		"""按优先级返回接下来可能朗读的文本（含前缀），供后台预取。
+
+		题目顺序 self.order 在开局已 shuffle 确定，因此当前题答案、下一题
+		题目/答案都可预知。趁用户读题/听当前朗读的间隙提前合成，按键时
+		speak() 直接命中缓存秒播，消除现场合成的等待。
+		"""
+		if self.at_end or self.position < 0 or not self.order:
+			return []
+		texts = []
+		question, answer = self.riddles[self.order[self.position]]
+		texts.append(SPEAK_ANSWER_PREFIX + answer)  # 用户随时可能按 K3 看答案
+		# 后续若干题的题目/答案都预取，连按“下一题”不用等现场合成
+		for offset in range(1, PREFETCH_LOOKAHEAD + 1):
+			index = self.position + offset
+			if index >= len(self.order):
+				break
+			next_question, next_answer = self.riddles[self.order[index]]
+			texts.append(SPEAK_QUESTION_PREFIX + next_question)
+			texts.append(SPEAK_ANSWER_PREFIX + next_answer)
+		return texts
+
 	def record_current(self):
 		if (self.mode == "all" and question_key(self.current[0]) in self.history.seen
 				and self.keys <= self.history.seen):
@@ -291,6 +333,26 @@ class RiddleApp:
 				return
 			self.game = RiddleGame(self.riddles, self.rng, self.history, mode=mode)
 			self.notice = ""
+
+	def speech(self):
+		"""返回当前应朗读的 (标识, 文本)；菜单或题组结束返回 (None, "")。
+
+		标识随题目和“是否揭晓”变化，调用方只在标识变化时朗读，
+		避免同一题在多帧里被反复朗读；返回菜单后标识归零。
+		"""
+		game = self.game
+		if game is None or game.at_end or game.current is None:
+			return None, ""
+		question, answer = game.current
+		key = question_key(question)
+		if game.revealed:
+			return ("answer", key), SPEAK_ANSWER_PREFIX + answer
+		return ("question", key), SPEAK_QUESTION_PREFIX + question
+
+	def prefetch_texts(self):
+		"""返回当前可预知的后续朗读文本（供后台预取，不朗读）。"""
+		game = self.game
+		return game.upcoming_texts() if game is not None else []
 
 
 _st = ui_theme.style()  # 全局界面风格
@@ -522,6 +584,9 @@ def riddle_event_action(event, display, app):
 
 
 def main():
+	# 必须在 spi_lcd.init()/pygame.init() 之前声明需要声音：让显示层跳过
+	# dummy 音频驱动，朗读音频由 pygame 的同一音频设备播放（预生成 ogg，无需 piper）。
+	audio_output.prepare()
 	if spi_lcd.is_simulate():
 		spi_lcd.WINDOW_SCALE = 2
 		if "--landscape" in sys.argv:
@@ -532,6 +597,9 @@ def main():
 			os.environ.setdefault("POKEMON_PORTRAIT", "1")
 	screen = spi_lcd.init()
 	buttons = None
+	speaker = tts.Speaker()
+	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
+	spoken = None
 	try:
 		if not spi_lcd.is_simulate():
 			try:
@@ -542,7 +610,9 @@ def main():
 		else:
 			pygame.display.set_caption("脑筋急转弯")
 		display = RiddleDisplay(screen)
-		app = RiddleApp(load_riddles(), history=RiddleHistory(default_history_path()))
+		riddles = load_riddles()
+		app = RiddleApp(riddles, history=RiddleHistory(default_history_path()))
+		sound.welcome()  # 从主界面进入时的语音欢迎
 		hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", wheel_support.QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
@@ -556,6 +626,8 @@ def main():
 			else:
 				actions = buttons.poll()
 			for action in actions:
+				if sfx_helper.is_press(action):
+					sound.button()
 				if action == "QUIT":
 					running = False
 					break
@@ -573,8 +645,18 @@ def main():
 					display.draw_menu(app)
 				else:
 					display.draw(app.game)
+				# 题目或答案状态变化时才朗读，同一题不会在多帧里反复念
+				key, text = app.speech()
+				if key is not None and key != spoken:
+					spoken = key
+					if text:
+						speaker.speak(text)  # 本地 ogg，命中即播、零延迟
+				elif key is None:
+					spoken = None
 				present_frame(screen)
 	finally:
+		sound.close()
+		speaker.close()
 		if buttons is not None:
 			buttons.cleanup()
 		pygame.quit()

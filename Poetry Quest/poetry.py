@@ -14,7 +14,10 @@ import pygame
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
+from common import audio as audio_output
+from common import sfx as sfx_helper
 from common import spi_lcd
+from common import tts
 from common import ui_theme
 from common.button_input import GPIOButtons, QUIT_HOLD_SECONDS
 
@@ -28,6 +31,10 @@ CHILDREN_MODE = next(index for index, (name, _, _) in enumerate(MODES) if name =
 CLASSIC_MODE = next(index for index, (_, _, classic) in enumerate(MODES) if classic)
 QUESTION_KINDS = ("续句", "作者", "作品")
 QUESTIONS_PER_GAME = 10
+
+# 朗读文案前缀（与 tools/generate_assets.py 一致）
+SPEAK_QUESTION_PREFIX = "请听题。"
+SPEAK_ANSWER_PREFIX = "答案是。"
 
 
 @dataclass(frozen=True)
@@ -230,6 +237,19 @@ class PoetryGame:
 			elif action == "K3":
 				self.start()
 		return None
+
+	def speech(self):
+		"""返回当前应朗读的 (标识, 文本)。答题阶段读题目，反馈阶段读答案。
+
+		儿童诗词模式的文本已预生成；其它模式文本未预生成，播放层会因未命中
+		而静默跳过，不影响游戏。
+		"""
+		if self.phase == "answer":
+			return ("question", self.index), SPEAK_QUESTION_PREFIX + self.question.prompt
+		if self.phase == "feedback":
+			correct = self.question.choices[self.question.answer]
+			return ("answer", self.index), SPEAK_ANSWER_PREFIX + correct
+		return None, ""
 
 
 _st = ui_theme.style()  # 全局界面风格
@@ -463,6 +483,8 @@ def event_action(event, display, game):
 
 
 def main():
+	# 声明需要声音，须早于 spi_lcd.init()/pygame.init()
+	audio_output.prepare()
 	if spi_lcd.is_simulate():
 		spi_lcd.WINDOW_SCALE = 2
 		if "--landscape" in sys.argv:
@@ -473,6 +495,10 @@ def main():
 			os.environ.setdefault("POKEMON_PORTRAIT", "1")
 	screen = spi_lcd.init()
 	buttons, bank = None, None
+	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
+	speaker = tts.Speaker(pregen_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)),
+												"media", "tts"))
+	spoken = None
 	try:
 		if spi_lcd.is_simulate():
 			pygame.display.set_caption("诗词大赛")
@@ -491,6 +517,7 @@ def main():
 		hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
+		sound.welcome()
 		print("诗词大赛已启动：K1/K2/K3 选择，长按 K3 返回。")
 		while running:
 			clock.tick(30)
@@ -501,6 +528,8 @@ def main():
 			else:
 				actions = ["HOLD_K3" if action == "QUIT" else action for action in buttons.poll()]
 			for action in actions:
+				if sfx_helper.is_press(action):
+					sound.button()
 				if action == "EXIT" or (game is None and action in ("BACK", "K3")):
 					running = False
 					break
@@ -522,9 +551,19 @@ def main():
 				display.draw_error()
 			else:
 				display.draw(game)
+				# 答题/反馈阶段朗读题目与答案（未预生成的模式自动静默跳过）
+				key, text = game.speech()
+				if key is not None and key != spoken:
+					spoken = key
+					if text and speaker.has(text):
+						speaker.speak(text)
+				elif key is None:
+					spoken = None
 			if not spi_lcd.present(poll_events=False):
 				break
 	finally:
+		sound.close()
+		speaker.close()
 		if bank is not None:
 			bank.close()
 		if buttons is not None:

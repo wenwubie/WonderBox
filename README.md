@@ -26,7 +26,31 @@ python main.py --sim --landscape
 
 音效由 `common/audio.py` 统一管理，按运行环境自动选择输出：电脑模拟用系统声卡，树莓派用 ALSA（匹配 I2S 功放）。需要发声的游戏必须在实际初始化显示之前调用 `common.audio.prepare()` 声明，随后把 `GameAudio` 用于播放。
 
-为避免 MAX98357 等功放在音频设备开关时发出"啪啪"的爆音，采取了三点措施：不需要声音的程序（含总界面）强制使用 dummy 音频驱动（无条件覆盖环境变量，即使 shell 里残留了 `SDL_AUDIODRIVER=alsa` 也不会打开真实设备），因此进出游戏、返回总界面时不会再有爆音；需要发声的游戏声明后，`pygame.init()` 阶段一次打开真实设备并复用，不重复 `quit/init`；音效和背景乐带淡入，退出时先把音量归零、淡出再停播，降低设备关闭瞬间的爆音。如需强制静音，设环境变量 `POKEMON_NO_AUDIO=1`。
+MAX98357 等功放在音频设备开关瞬间可能发出"啪啪"的爆音，这是硬件层面的 DC 突变，光靠淡入淡出压不掉。各游戏以子进程方式独立运行：需要发声的游戏（粘猴、脑筋急转弯）在实际初始化显示之前调用 `common.audio.prepare()` 声明，用 ALSA 打开设备并在退出时关闭；无声游戏一律用 dummy 音频驱动（无条件覆盖环境变量，即使 shell 里残留 `SDL_AUDIODRIVER=alsa` 也不会打开真实设备），所以进出无声游戏和返回总界面都不碰音频硬件。音效和背景乐带淡入，退出时先把音量归零、淡出再停播。模拟模式无真实功放，走系统声卡，方便 Windows 调试。如需强制静音，设环境变量 `POKEMON_NO_AUDIO=1`。
+
+#### 全项目音效与语音（本地音频模式）
+
+Pi Zero 2 W 上实时语音合成一句要几秒，所以**全部音效/语音都在开发机预生成、随项目提供，运行时只播放、零合成、零延迟**。所有文件按功能分目录，互不混放：
+
+- `common/media/`：`button.ogg`（按键音）、`correct.ogg`/`wrong.ogg`（对/错提示）——各游戏共用，只存一份。
+- `<功能>/media/welcome.ogg`：进入该功能时的语音欢迎（如"欢迎进入脑筋急转弯"），10 个功能各一份。
+- `<功能>/media/tts/*.ogg`：该功能专属朗读，`common/tts.py` 按文本 hash 命中即播：
+  - 脑筋急转弯 `Riddles/media/tts/`：500 题的题目+答案（1000 段）。
+  - 诗词 `Poetry Quest/media/tts/`：儿童诗词 77 首的题目+答案（其它大题库模式不朗读）。
+  - 宝可梦 `Pokemon/media/tts/`：493 只的名字，每次切换都朗读。
+- 三个转盘游戏各有**不同**的转盘音 `wheel.ogg`（骰子对决/幸运转盘/星愿占卜屋，音高与节奏各异），转动时循环播放、停下即停。
+
+各游戏音效接入（`common/sfx.py` 统一封装，复用已打开的 mixer，不另开音频设备）：
+- 从主界面进入任意功能 → 播该功能的 `welcome.ogg`。
+- 按键按下 → 播 `button.ogg`（带节流防长按连发）。**粘猴自带完整音效，游戏过程中不额外加按键音**，只在进入时播欢迎语。
+- 头脑挑战 → 只对错提示音（correct/wrong），不朗读。
+- 脑筋急转弯、诗词儿童模式 → 读题目与答案；宝可梦图鉴 → 切换读名字。
+
+生成/更新音频（在开发机，需 piper-tts + onnxruntime + ffmpeg）：`python tools/generate_assets.py`（已存在自动跳过），可用 `--only sfx|welcome|riddles|poetry|pokemon` 分组、`--force` 强制重生成、`--list` 查看清单。语音用内置 Piper 女声 `common/models/zh_CN-huayan-medium.onnx`；按键/提示/转盘音由脚本合成。改题库后重跑对应分组即可。Pi 端零依赖，不需要 piper/模型。
+
+`tts.Speaker(pregen_dir=...).status()` 可看 `enabled`/`pregen_ready`/`play_count`/`miss_count`/`load_error` 排查。`POKEMON_NO_AUDIO=1` 静音。
+
+排查：在 Python 里 `tts.Speaker().status()` 可查看当前后端、模型路径、是否就绪。可选地，用 `python tools/generate_tts.py` 给当前题库批量预生成 ogg 以消除合成延迟（需开发机装 piper + ffmpeg；已存在自动跳过，`--force` 全部重生成）。
 
 ## 十项功能
 
@@ -40,7 +64,7 @@ python main.py --sim --landscape
 
 ### 3. 脑筋急转弯
 
-浏览趣味问答，可选择全部题目、未答过或已答过的题目。答题时 K1 回看上一题，K2 切换下一题，K3 显示答案；看过答案的题目会记录为已答过，也可以在菜单中重置进度。详见[脑筋急转弯说明](Riddles/README.md)。
+浏览趣味问答，可选择全部题目、未答过或已答过的题目。答题时 K1 回看上一题，K2 切换下一题，K3 显示答案；看过答案的题目会记录为已答过，也可以在菜单中重置进度。显示题目后会自动朗读题目，揭晓答案后会用语音提示答案内容。详见[脑筋急转弯说明](Riddles/README.md)。
 
 ### 4. 骰子对决
 

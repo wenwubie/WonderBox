@@ -10,6 +10,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))
 from common import spi_lcd
 from common.button_input import BUTTON_PINS, DEBOUNCE_SECONDS, GPIOButtons, QUIT_HOLD_SECONDS
+from common import audio as audio_output
+from common import sfx as sfx_helper
 from common import ui_theme
 
 import pygame
@@ -404,6 +406,8 @@ def present_frame(screen):
 
 
 def main():
+	# 声明需要声音，须早于 pygame.init()
+	audio_output.prepare()
 	if spi_lcd.is_simulate():
 		spi_lcd.WINDOW_SCALE = 2
 		if "--landscape" in sys.argv:
@@ -414,6 +418,7 @@ def main():
 			os.environ.setdefault("POKEMON_PORTRAIT", "1")
 	screen = spi_lcd.init()
 	buttons = None
+	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
 	try:
 		if not spi_lcd.is_simulate():
 			try:
@@ -428,6 +433,7 @@ def main():
 		hold = spi_lcd.SimulatedHold("K3", "QUIT", QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
+		sound.welcome()
 		exit_hint = "按 Esc 退出" if buttons is None else "长按 K3 退出"
 		print("幸运转盘已启动：K3 开始和停下，K1 换题；%s。" % exit_hint)
 		while running:
@@ -439,16 +445,27 @@ def main():
 			else:
 				actions = buttons.poll()
 			for action in actions:
+				if sfx_helper.is_press(action):
+					sound.button()
 				if action == "QUIT":
 					running = False
 					break
+				phase_before = wheel.phase
 				wheel.handle_action(action)
+				# 进入转动 -> 循环转盘音；停下 -> 停止
+				if wheel.phase == "spinning" and phase_before != "spinning":
+					sound.loop_start("wheel")
+				elif phase_before == "spinning" and wheel.phase != "spinning":
+					sound.loop_stop()
 			if not running:
 				break
 			wheel.update(elapsed)
+			if wheel.phase == "result":
+				sound.loop_stop()
 			display.draw(wheel)
 			present_frame(screen)
 	finally:
+		sound.close()
 		if buttons is not None:
 			buttons.cleanup()
 		pygame.quit()

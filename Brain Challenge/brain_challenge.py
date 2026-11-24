@@ -22,6 +22,8 @@ present_frame = wheel_support.present_frame
 spi_lcd = wheel_support.spi_lcd
 wrap_text = wheel_support.wrap_text
 
+from common import audio as audio_output
+from common import sfx as sfx_helper
 from common import ui_theme
 
 import pygame
@@ -775,9 +777,10 @@ def build_questions(rng, history=None):
 
 
 class BrainGame:
-	def __init__(self, rng=None, history=None):
+	def __init__(self, rng=None, history=None, on_result=None):
 		self.rng = rng if rng is not None else random.Random()
 		self.history = history if history is not None else QuestionHistory()
+		self.on_result = on_result  # 回调 correct/wrong，供主循环播放提示音
 		self.start()
 
 	@property
@@ -814,11 +817,14 @@ class BrainGame:
 		self.feedback_elapsed = 0.0
 
 	def finish_answer(self, choice):
-		record = AnswerRecord(choice, choice == self.question.answer,
+		correct = choice == self.question.answer
+		record = AnswerRecord(choice, correct,
 							  round(min(self.elapsed, QUESTION_SECONDS) * 100))
 		self.answers[self.active_player].append(record)
 		self.phase = "feedback"
 		self.feedback_elapsed = 0.0
+		if self.on_result is not None:
+			self.on_result("correct" if correct else "wrong")
 
 	def advance(self):
 		if self.index + 1 < len(self.questions):
@@ -1148,6 +1154,8 @@ def action_from_event(event, display, game):
 
 
 def main():
+	# 声明需要声音，须早于 pygame.init()
+	audio_output.prepare()
 	if spi_lcd.is_simulate():
 		spi_lcd.WINDOW_SCALE = 2
 		if "--landscape" in sys.argv:
@@ -1158,6 +1166,7 @@ def main():
 			os.environ.setdefault("POKEMON_PORTRAIT", "1")
 	screen = spi_lcd.init()
 	buttons = None
+	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
 	try:
 		if not spi_lcd.is_simulate():
 			try:
@@ -1168,10 +1177,12 @@ def main():
 		else:
 			pygame.display.set_caption("头脑挑战")
 		display = BrainDisplay(screen)
-		game = BrainGame(history=QuestionHistory(default_history_path()))
+		game = BrainGame(history=QuestionHistory(default_history_path()),
+						 on_result=lambda name: sound.play(name))  # 只对错提示音，不朗读
 		hold = spi_lcd.SimulatedHold("K3", "QUIT", wheel_support.QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
+		sound.welcome()
 		exit_hint = "按 Esc 退出" if buttons is None else "长按 K3 退出"
 		print("头脑挑战已启动：两人轮流答题，K3 开始，K1、K2、K3 选择答案；%s。" % exit_hint)
 		while running:
@@ -1194,6 +1205,8 @@ def main():
 			else:
 				actions = buttons.poll()
 			for action in actions:
+				if sfx_helper.is_press(action):
+					sound.button()
 				if action == "QUIT":
 					running = False
 					break
@@ -1210,6 +1223,7 @@ def main():
 			display.draw(game)
 			present_frame(screen)
 	finally:
+		sound.close()
 		if buttons is not None:
 			buttons.cleanup()
 		pygame.quit()

@@ -9,6 +9,11 @@ sys.path.insert(0, os.path.dirname(BASE_DIR))
 from common import spi_lcd
 from common import ui_theme
 from common.button_input import GPIOButtons
+from common import audio as audio_output
+from common import sfx as sfx_helper
+
+# 声明需要声音，须早于下方模块级的 spi_lcd.init()/pygame.init()
+audio_output.prepare()
 
 if spi_lcd.is_simulate():
 	spi_lcd.WINDOW_SCALE = 2
@@ -823,6 +828,8 @@ def main():
 	hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", LONG_PRESS_SECONDS)
 	clock = pygame.time.Clock()
 	running = True
+	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
+	sound.welcome()
 	print("星愿占卜屋已启动。K1/K2 选择，K3 确认或返回；菜单中长按 K3 退出。")
 
 	try:
@@ -835,6 +842,8 @@ def main():
 				actions = buttons.poll()
 
 			for action in actions:
+				if sfx_helper.is_press(action):
+					sound.button()
 				if action == "HOLD_K3":
 					if state["view"] != "home":
 						continue
@@ -842,7 +851,13 @@ def main():
 				if action == "QUIT" or (action == "BACK" and state["view"] == "home"):
 					running = False
 					break
+				view_before = state["view"]
 				handle_action(action, state)
+				# 进入洗牌动画 -> 循环转盘音；离开 -> 停止
+				if state["view"] == "shuffle" and view_before != "shuffle":
+					sound.loop_start("wheel")
+				elif view_before == "shuffle" and state["view"] != "shuffle":
+					sound.loop_stop()
 				if action == "BACK":
 					break
 
@@ -853,12 +868,14 @@ def main():
 					state["elapsed"], state["spin_duration"])
 				state["pointer"] = math.floor(state["scroll_position"] + 0.5) % state["card_count"]
 				if state["elapsed"] >= (state["spin_duration"] + SPIN_SETTLE_SECONDS +
-									CARD_REVEAL_SECONDS + CARD_REVEAL_HOLD_SECONDS):
+										CARD_REVEAL_SECONDS + CARD_REVEAL_HOLD_SECONDS):
 					state["view"] = "result"
+					sound.loop_stop()
 
 			if running:
 				running = render(state)
 	finally:
+		sound.close()
 		if buttons is not None:
 			buttons.cleanup()
 		pygame.quit()

@@ -93,7 +93,7 @@ def present_frame(screen):
 
 # 音效触发点参考原版 Construct 2 工程：gamemusic 循环、button 点击、
 # stick 伸出、stickdone 搭好、walk 行走、wonderful 得分、gameover 失败。
-MONKEY_SOUNDS = ("button", "taptoplay", "gamewon", "stick", "stickdone",
+MONKEY_SOUNDS = ("button", "welcome", "taptoplay", "gamewon", "stick", "stickdone",
 				 "walk", "wonderful", "gameover")
 MONKEY_MUSIC = "gamemusic"
 
@@ -449,10 +449,75 @@ def key_action(event, display=None):
 	return None
 
 
+def _play_loop(screen, buttons, audio):
+	"""一局粘猴的主循环。调用方负责显示/音频设备的生命周期，这里只负责玩。"""
+	display = StickyMonkeyDisplay(screen)
+	best_score, best_time = load_best_record()
+	game = StickMonkeyGame(*screen.get_size(), best_score=best_score, best_time=best_time,
+						   on_event=audio.play)
+	audio.start_music()
+	hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", QUIT_HOLD_SECONDS)
+	clock = pygame.time.Clock()
+	running = True
+	key_held = False
+	print("粘猴已启动：按住蓄力搭桥，松开后猴子前进；返回游戏菜单。")
+	while running:
+		elapsed = clock.tick(30) / 1000.0
+		if buttons is None:
+			for event in pygame.event.get():
+				if event.type == pygame.QUIT:
+					running = False
+					break
+				action = key_action(event, display)
+				if action == "K1_DOWN" and not key_held:
+					key_held = True
+					game.press()
+				elif action == "K1_UP" and key_held:
+					key_held = False
+					game.release()
+				if action in ("K3_DOWN", "RETURN"):
+					if action == "K3_DOWN":
+						action = hold.process_event(event, "K3")
+					else:
+						running = False
+				if action in ("K3", "RETURN"):
+					running = False
+				elif event.type in (pygame.KEYUP, pygame.MOUSEBUTTONUP, pygame.WINDOWFOCUSLOST):
+					action = hold.process_event(event, None)
+					if action in ("K3", "RETURN"):
+						running = False
+			if not running:
+				break
+		else:
+			actions = buttons.poll()
+			is_down = buttons.states["K1"]["down"]
+			if is_down and not key_held:
+				key_held = True
+				game.press()
+			elif not is_down and key_held:
+				key_held = False
+				game.release()
+			if "K3" in actions:
+				running = False
+		if not running:
+			break
+		previous_state = game.state
+		game.update(elapsed)
+		if (previous_state != "game_over" and game.state == "game_over"
+				and game.score > game.best_score):
+			record = save_best_record(game.score)
+			if record is None:
+				print("最高纪录保存失败。")
+			else:
+				game.best_score, game.best_time = record
+				audio.play("gamewon")
+		display.draw(game, pygame.time.get_ticks() / 1000.0)
+		present_frame(screen)
+
+
 def main():
-	# 必须在 spi_lcd.init()/pygame.init() 之前声明需要声音：
-	# 让显示层跳过 dummy 音频驱动，音频设备在 pygame.init() 阶段只打开一次，
-	# 避免反复开关功放产生"啪啪"的爆音。
+	# 独立运行（直接 python sticky_monkey.py）时仍自带完整生命周期：
+	# 必须在 spi_lcd.init()/pygame.init() 之前声明需要声音，让显示层跳过 dummy。
 	audio_output.prepare()
 	if spi_lcd.is_simulate():
 		spi_lcd.WINDOW_SCALE = 2
@@ -463,6 +528,7 @@ def main():
 		os.environ.setdefault("POKEMON_PORTRAIT", "1")
 	screen = spi_lcd.init()
 	buttons = None
+	audio = None
 	try:
 		if not spi_lcd.is_simulate():
 			try:
@@ -472,73 +538,14 @@ def main():
 				raise RuntimeError("GPIO 初始化失败，请检查 RPi.GPIO 和按键连接。") from error
 		else:
 			pygame.display.set_caption("粘猴")
-		display = StickyMonkeyDisplay(screen)
 		audio = create_audio()
-		best_score, best_time = load_best_record()
-		game = StickMonkeyGame(*screen.get_size(), best_score=best_score, best_time=best_time,
-							   on_event=audio.play)
-		audio.start_music()
-		hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", QUIT_HOLD_SECONDS)
-		clock = pygame.time.Clock()
-		running = True
-		key_held = False
-		print("粘猴已启动：按住蓄力搭桥，松开后猴子前进；返回游戏菜单。")
-		while running:
-			elapsed = clock.tick(30) / 1000.0
-			if buttons is None:
-				for event in pygame.event.get():
-					if event.type == pygame.QUIT:
-						running = False
-						break
-					action = key_action(event, display)
-					if action == "K1_DOWN" and not key_held:
-						key_held = True
-						game.press()
-					elif action == "K1_UP" and key_held:
-						key_held = False
-						game.release()
-					if action in ("K3_DOWN", "RETURN"):
-						if action == "K3_DOWN":
-							action = hold.process_event(event, "K3")
-						else:
-							running = False
-					if action in ("K3", "RETURN"):
-						running = False
-					elif event.type in (pygame.KEYUP, pygame.MOUSEBUTTONUP, pygame.WINDOWFOCUSLOST):
-						action = hold.process_event(event, None)
-						if action in ("K3", "RETURN"):
-							running = False
-				if not running:
-					break
-			else:
-				actions = buttons.poll()
-				is_down = buttons.states["K1"]["down"]
-				if is_down and not key_held:
-					key_held = True
-					game.press()
-				elif not is_down and key_held:
-					key_held = False
-					game.release()
-				if "K3" in actions:
-					running = False
-			if not running:
-				break
-			previous_state = game.state
-			game.update(elapsed)
-			if (previous_state != "game_over" and game.state == "game_over"
-					and game.score > game.best_score):
-				record = save_best_record(game.score)
-				if record is None:
-					print("最高纪录保存失败。")
-				else:
-					game.best_score, game.best_time = record
-					audio.play("gamewon")
-			display.draw(game, pygame.time.get_ticks() / 1000.0)
-			present_frame(screen)
+		audio.play("welcome")  # 从主界面进入时的语音欢迎（游戏内已有自带音效，不再加按键音）
+		_play_loop(screen, buttons, audio)
 	finally:
 		if buttons is not None:
 			buttons.cleanup()
-		audio.close()
+		if audio is not None:
+			audio.close()
 		pygame.quit()
 
 

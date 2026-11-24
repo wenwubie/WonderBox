@@ -18,6 +18,8 @@ present_frame = wheel_support.present_frame
 spi_lcd = wheel_support.spi_lcd
 wrap_text = wheel_support.wrap_text
 
+from common import audio as audio_output
+from common import sfx as sfx_helper
 from common import ui_theme
 
 import pygame
@@ -572,6 +574,8 @@ class DuelDisplay:
 
 
 def main():
+	# 声明需要声音，须早于 pygame.init()
+	audio_output.prepare()
 	if spi_lcd.is_simulate():
 		spi_lcd.WINDOW_SCALE = 2
 		if "--landscape" in sys.argv:
@@ -582,6 +586,7 @@ def main():
 			os.environ.setdefault("POKEMON_PORTRAIT", "1")
 	screen = spi_lcd.init()
 	buttons = None
+	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
 	try:
 		if not spi_lcd.is_simulate():
 			try:
@@ -596,6 +601,7 @@ def main():
 		hold = spi_lcd.SimulatedHold("K3", "BACK", wheel_support.QUIT_HOLD_SECONDS)
 		clock = pygame.time.Clock()
 		running = True
+		sound.welcome()
 		print("骰子对决已启动：K1、K2 控制骰子，K3 进入挑战；轮盘中 K1 启动/停止，K2 返回，K3 无功能。")
 		while running:
 			elapsed = clock.tick(30) / 1000.0
@@ -606,6 +612,8 @@ def main():
 			else:
 				actions = buttons.poll()
 			for action in actions:
+				if sfx_helper.is_press(action):
+					sound.button()
 				if action == "QUIT":
 					running = False
 					break
@@ -614,13 +622,23 @@ def main():
 						continue
 					running = False
 					break
+				wheel_phase = getattr(game, "wheel", None).phase if getattr(game, "wheel", None) else None
 				game.handle_action(action)
+				# 轮盘开始转动 -> 循环转盘音；停下 -> 停止
+				if getattr(game, "wheel", None):
+					if game.wheel.phase == "spinning" and wheel_phase != "spinning":
+						sound.loop_start("wheel")
+					elif wheel_phase == "spinning" and game.wheel.phase != "spinning":
+						sound.loop_stop()
 			if not running:
 				break
 			game.update(elapsed)
+			if getattr(game, "wheel", None) and game.wheel.phase == "result":
+				sound.loop_stop()
 			display.draw(game)
 			present_frame(screen)
 	finally:
+		sound.close()
 		if buttons is not None:
 			buttons.cleanup()
 		pygame.quit()
