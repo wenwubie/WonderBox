@@ -35,6 +35,7 @@ QUESTIONS_PER_GAME = 10
 # 朗读文案前缀（与 tools/generate_assets.py 一致）
 SPEAK_QUESTION_PREFIX = "请听题。"
 SPEAK_ANSWER_PREFIX = "答案是。"
+SPEAK_OPTION_PREFIX = ("选项一，", "选项二，", "选项三，")
 
 
 @dataclass(frozen=True)
@@ -239,17 +240,22 @@ class PoetryGame:
 		return None
 
 	def speech(self):
-		"""返回当前应朗读的 (标识, 文本)。答题阶段读题目，反馈阶段读答案。
+		"""返回当前应朗读的 (标识, 文本列表)。答题阶段读题目 + 三个选项，
+		反馈阶段读答案；列表内各条会串行连播，不会互相打断。
 
 		儿童诗词模式的文本已预生成；其它模式文本未预生成，播放层会因未命中
 		而静默跳过，不影响游戏。
 		"""
 		if self.phase == "answer":
-			return ("question", self.index), SPEAK_QUESTION_PREFIX + self.question.prompt
+			texts = [SPEAK_QUESTION_PREFIX + self.question.prompt]
+			for index, choice in enumerate(self.question.choices):
+				if index < len(SPEAK_OPTION_PREFIX):
+					texts.append(SPEAK_OPTION_PREFIX[index] + str(choice).strip())
+			return ("question", self.index), texts
 		if self.phase == "feedback":
 			correct = self.question.choices[self.question.answer]
-			return ("answer", self.index), SPEAK_ANSWER_PREFIX + correct
-		return None, ""
+			return ("answer", self.index), [SPEAK_ANSWER_PREFIX + correct]
+		return None, []
 
 
 _st = ui_theme.style()  # 全局界面风格
@@ -551,12 +557,12 @@ def main():
 				display.draw_error()
 			else:
 				display.draw(game)
-				# 答题/反馈阶段朗读题目与答案（未预生成的模式自动静默跳过）
-				key, text = game.speech()
+				# 答题/反馈阶段朗读题目+选项 / 答案（未预生成的模式自动静默跳过）
+				key, texts = game.speech()
 				if key is not None and key != spoken:
 					spoken = key
-					if text and speaker.has(text):
-						speaker.speak(text)
+					if texts and all(speaker.has(text) for text in texts):
+						speaker.speak_sequence(texts)
 				elif key is None:
 					spoken = None
 			if not spi_lcd.present(poll_events=False):

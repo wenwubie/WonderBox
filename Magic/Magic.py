@@ -731,6 +731,7 @@ def start_draw(state, mode):
 				  "elapsed": 0.0, "spin_duration": SPIN_DURATION, "selected": selected,
 				  "scroll_start": pointer, "scroll_direction": direction,
 				  "scroll_steps": steps, "scroll_position": float(pointer), "card_count": card_count,
+				  "last_tick_slot": None,
 				  "card": cards[selected], "love_page": 0})
 
 
@@ -823,7 +824,7 @@ def main():
 	state = {"view": "home", "menu": 0, "sign": 0, "topic": 0,
 			 "mode": "daily", "pointer": 0, "elapsed": 0.0, "spin_duration": SPIN_DURATION,
 			 "scroll_start": 0, "scroll_direction": 1, "scroll_steps": len(DAILY_CARDS),
-			 "scroll_position": 0.0,
+			 "scroll_position": 0.0, "last_tick_slot": None,
 			 "selected": 0, "card": DAILY_CARDS[0], "card_count": len(DAILY_CARDS), "love_page": 0}
 	hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", LONG_PRESS_SECONDS)
 	clock = pygame.time.Clock()
@@ -853,9 +854,10 @@ def main():
 					break
 				view_before = state["view"]
 				handle_action(action, state)
-				# 进入洗牌动画 -> 循环转盘音；离开 -> 停止
+				# 洗牌音改由 scroll_position 逐格触发，速率自然跟随星轮减速。
+				# 离开时仍停一次循环声道，兜底清理旧资源/异常路径。
 				if state["view"] == "shuffle" and view_before != "shuffle":
-					sound.loop_start("wheel")
+					state["last_tick_slot"] = None
 				elif view_before == "shuffle" and state["view"] != "shuffle":
 					sound.loop_stop()
 				if action == "BACK":
@@ -867,6 +869,10 @@ def main():
 					state["scroll_start"], state["scroll_direction"], state["scroll_steps"],
 					state["elapsed"], state["spin_duration"])
 				state["pointer"] = math.floor(state["scroll_position"] + 0.5) % state["card_count"]
+				tick_slot = math.floor(state["scroll_position"] + 0.5)
+				if tick_slot != state.get("last_tick_slot"):
+					sound.play("wheel_tick")
+					state["last_tick_slot"] = tick_slot
 				if state["elapsed"] >= (state["spin_duration"] + SPIN_SETTLE_SECONDS +
 										CARD_REVEAL_SECONDS + CARD_REVEAL_HOLD_SECONDS):
 					state["view"] = "result"

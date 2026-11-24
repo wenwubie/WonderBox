@@ -12,6 +12,7 @@ from common import spi_lcd
 from common.button_input import BUTTON_PINS, DEBOUNCE_SECONDS, GPIOButtons, QUIT_HOLD_SECONDS
 from common import audio as audio_output
 from common import sfx as sfx_helper
+from common import tts
 from common import ui_theme
 
 import pygame
@@ -419,6 +420,8 @@ def main():
 	screen = spi_lcd.init()
 	buttons = None
 	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
+	speaker = tts.Speaker(pregen_dir=os.path.join(BASE_DIR, "media", "tts"))
+	spoken_result = None
 	try:
 		if not spi_lcd.is_simulate():
 			try:
@@ -462,9 +465,19 @@ def main():
 			wheel.update(elapsed)
 			if wheel.phase == "result":
 				sound.loop_stop()
+				# 转完后朗读结果内容；换题或再转会得到新的 key，重新朗读
+				result_key = (wheel.selected, wheel.task)
+				if result_key != spoken_result:
+					spoken_result = result_key
+					text = str(GAMES[wheel.selected][2][wheel.task]).strip()
+					if speaker.has(text):
+						speaker.speak(text)
+			else:
+				spoken_result = None
 			display.draw(wheel)
 			present_frame(screen)
 	finally:
+		speaker.close()
 		sound.close()
 		if buttons is not None:
 			buttons.cleanup()

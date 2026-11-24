@@ -273,8 +273,10 @@ class RiddleBankTests(unittest.TestCase):
 		for question, answer in bank:
 			with self.subTest(question=question):
 				self.assertTrue(question and answer)
-				self.assertLessEqual(len(question), 70)
-				self.assertLessEqual(len(answer), 45)
+				# 题库来自《激发无限潜能的500个脑筋急转弯游戏》原文，
+				# 个别题目/答案较长；显示端 fit_text 会自动缩放适配（见布局测试）。
+				self.assertLessEqual(len(question), 130)
+				self.assertLessEqual(len(answer), 60)
 
 	def test_loader_skips_invalid_and_duplicate_records(self):
 		with tempfile.TemporaryDirectory() as directory:

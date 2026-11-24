@@ -185,7 +185,26 @@ def apply_theme():
 
 
 apply_theme()
-DECLARATION_LINES = ("此宝盒仅允许我或我的朋友", "文怡然、文焕然、", "欧泽轩、欧阳沐希使用，", "否则将大祸临头")
+# 按屏幕方向分行: 竖屏 240px 窄, 拆成 8 行; 横屏 320px 宽, 保持原 5 行。
+DECLARATION_LINES = {
+    True: (
+        "此宝盒由文武天尊",
+        "耗时七七四十九天,",
+        "花费九九八十一万亿",
+        "Token，打造而成。",
+        "仅允许文武天尊或他的好朋友",
+        "文怡然、文焕然、欧泽轩、",
+        "欧阳沐希使用，",
+        "否则将大祸临头！切记切记！",
+    ),
+    False: (
+        "此宝盒由文武天尊耗时七七四十九天,",
+        "花费九九八十一万亿Token，打造而成。",
+        "仅允许文武天尊或他的好朋友",
+        "文怡然、文焕然、欧泽轩、欧阳沐希使用，",
+        "否则将大祸临头！切记切记！",
+    ),
+}
 
 
 class LauncherDisplay:
@@ -200,7 +219,7 @@ class LauncherDisplay:
         self.small_font = spi_lcd.load_font(12)
         self.button_font = spi_lcd.load_font(13)
         self.dialog_font = spi_lcd.load_font(19)
-        self.declaration_font = spi_lcd.load_font(16 if self.portrait else 15)
+        self.declaration_font = spi_lcd.load_font(16 if self.portrait else 14)
         self.icon_font = spi_lcd.load_font(19)
         self.section_y = 62 if self.portrait else 49
         self.footer_top = self.height - 27
@@ -483,11 +502,13 @@ class LauncherDisplay:
 
     def draw_declaration(self):
         self.centered("使用声明", self.dialog_font, LIGHT, (self.width // 2, self.section_y + 12))
-        line_gap = 24 if self.portrait else 22
-        for index, line in enumerate(DECLARATION_LINES):
-            color = CORAL if index == len(DECLARATION_LINES) - 1 else LIGHT
+        lines = DECLARATION_LINES[self.portrait]
+        line_gap = 19 if self.portrait else 18
+        first_y = self.section_y + (38 if self.portrait else 37)
+        for index, line in enumerate(lines):
+            color = CORAL if index == len(lines) - 1 else LIGHT
             self.centered(line, self.declaration_font, color,
-                          (self.width // 2, self.section_y + 40 + index * line_gap))
+                          (self.width // 2, first_y + index * line_gap))
         pygame.draw.rect(self.screen, TEAL, self.declaration_button, border_radius=5)
         self.centered("知道了", self.button_font, PAPER, self.declaration_button.center)
 

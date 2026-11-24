@@ -4,13 +4,13 @@
 
 答题时 K1 回看上一题，K2 切换下一题，K3 显示答案。答题中长按 K3 返回菜单，题组结束后短按 K3 返回菜单。菜单中长按 K3 退出。模拟窗口支持鼠标点击和数字键 1/2/3，并支持长按 K3 对应按钮；Backspace 或右上角按钮返回菜单，Esc 退出。
 
-显示题目后自动朗读题目（“请听题。…”），揭晓答案后语音提示答案内容（“答案是。…”），均为预生成的 Piper 中文女声 ogg（自然柔和），**本地播放、零延迟、不联网**。进入功能时有语音欢迎，按键按下有按键音。
+显示题目后自动朗读题目（“请听题。…”），揭晓答案后语音提示答案内容（“答案是。…”），均为预生成的微软神经网络音色 ogg（晓伊·萌版，自然又可爱），**本地播放、零延迟、不联网**。进入功能时有语音欢迎，按键按下有按键音。
 
 **音频文件**（都在本功能 `media/` 目录，不和其它功能混放）：
 - `media/welcome.ogg`：进入时的语音欢迎。
 - `media/tts/*.ogg`：500 题的题目+答案共 1000 段，按文本 hash 命名，`common/tts.py` 命中即播。题目出现顺序虽随机，但文本固定，全部预生成，所以任意题都秒播。
 
-改题库后，在开发机重跑 `python tools/generate_assets.py --only riddles`（已存在自动跳过）。排查可跑 `python -c "from common import tts; print(tts.Speaker(pregen_dir='Riddles/media/tts').status())"` 看 `play_count` / `miss_count` / `load_error`。设 `POKEMON_NO_AUDIO=1` 静音。Pi 端无需 piper/模型。
+改题库后，在开发机重跑 `python tools/generate_assets.py --only riddles --force`（生成需联网，用 edge-tts 晓伊萌版；已存在默认跳过）。排查可跑 `python -c "from common import tts; print(tts.Speaker(pregen_dir='Riddles/media/tts').status())"` 看 `play_count` / `miss_count` / `load_error`。设 `POKEMON_NO_AUDIO=1` 静音。Pi 端无需联网/模型。
 
 ```bash
 python Riddles/Riddles.py

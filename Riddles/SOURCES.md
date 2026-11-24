@@ -1,6 +1,19 @@
 # 题库来源
 
-`riddles.json` 包含经过筛选、改写的题目及补充题目。部分题目来自
+## 当前题库（2026-11-24 起）
+
+`riddles.json` 的 500 道题全部提取自：
+
+> 《激发无限潜能的500个脑筋急转弯游戏（越玩越聪明）》
+> 薛莎莎 编著，清华大学出版社，2014，ISBN 978-7-302-34322-6
+
+提取脚本：`tools/extract_epub_riddles.py`。每道题取“快来接招吧”下的题目正文（`q`）
+与“答案在这里”下的答案（`a`），舍弃思维提示与插图，按 `question_key` 去重。
+提取前的题库备份为 `riddles.json.bak`。
+
+## 历史题库（已替换）
+
+旧 `riddles.json` 包含经过筛选、改写的题目及补充题目。部分题目来自
 [EpochcraftMC/AnswerTime](https://github.com/EpochcraftMC/AnswerTime)，
 上游文件为 `src/main/resources/assets/answer_time/bank/riddle.json`，
 版本 `2e2156d2ec05c13319edb318247fb9bc31259485`。题目已筛选、调整措辞，

@@ -458,9 +458,10 @@ HOME_INDEX = {key: index for index, (key, _) in enumerate(HOME_ACTIONS)}
 
 
 class PetGame:
-	def __init__(self, world, rng=None):
+	def __init__(self, world, rng=None, on_activity=None):
 		self.world = world
 		self.rng = rng if rng is not None else random.Random()
+		self.on_activity = on_activity  # 动作开始回调(name)，供主循环播放专属音效
 		self.view = "owners"
 		self.index = 0
 		self.owner_id = None
@@ -650,6 +651,8 @@ class PetGame:
 					self.world.care(self.owner_id, self.pet_id, action, skill=self.pending_skill)
 					self.show("home", HOME_INDEX[action])
 					self.notice = "%s开始啦！" % ACTIVITIES[action][0]
+					if self.on_activity:
+						self.on_activity(action)
 			elif self.view == "confirm_stop":
 				if self.index == 0:
 					self.show("home", HOME_INDEX["stop"])
@@ -663,6 +666,8 @@ class PetGame:
 				self.world.care(self.owner_id, self.pet_id, "play", won=self.won)
 				self.show("home", HOME_INDEX["play"])
 				self.notice = "找到星星啦！" if self.won else "一起玩真开心！"
+				if self.on_activity:
+					self.on_activity("play")
 			elif self.view == "result":
 				self.show("home", HOME_INDEX["play"])
 			elif self.view == "accessory":
@@ -1712,8 +1717,12 @@ def main():
 			except Exception as error:
 				raise RuntimeError("GPIO 初始化失败，请检查 RPi.GPIO 和按键连接。") from error
 		display = PetDisplay(screen)
+		# 每种宠物动作播放自己专属的音效（喂食/玩耍/洗澡...），按键音由 is_press 负责
+		def play_activity(name):
+			sound.play("act_" + name)
+
 		try:
-			game = PetGame(PetWorld())
+			game = PetGame(PetWorld(), on_activity=play_activity)
 		except SaveError as error:
 			print(error)
 			game = None

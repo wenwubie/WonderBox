@@ -411,7 +411,7 @@ class StickyMonkeyDisplay:
 												   round(1400 * self.scale_y))))
 		action_hint = {
 			"title": "开始",
-			"ready": "蓄力",
+			"ready": "开始",
 			"charging": "松开",
 			"game_over": "重来",
 		}.get(game.state)

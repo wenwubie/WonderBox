@@ -36,17 +36,21 @@ Pi Zero 2 W 上实时语音合成一句要几秒，所以**全部音效/语音�
 - `<功能>/media/welcome.ogg`：进入该功能时的语音欢迎（如"欢迎进入脑筋急转弯"），10 个功能各一份。
 - `<功能>/media/tts/*.ogg`：该功能专属朗读，`common/tts.py` 按文本 hash 命中即播：
   - 脑筋急转弯 `Riddles/media/tts/`：500 题的题目+答案（1000 段）。
-  - 诗词 `Poetry Quest/media/tts/`：儿童诗词 77 首的题目+答案（其它大题库模式不朗读）。
+  - 诗词 `Poetry Quest/media/tts/`：儿童诗词 77 首的题目+**选项一/二/三**+答案（其它大题库模式不朗读）。
   - 宝可梦 `Pokemon/media/tts/`：493 只的名字，每次切换都朗读。
-- 三个转盘游戏各有**不同**的转盘音 `wheel.ogg`（骰子对决/幸运转盘/星愿占卜屋，音高与节奏各异），转动时循环播放、停下即停。
+  - 幸运转盘 `Lucky Wheel/media/tts/`：96 条转盘结果，转完朗读；骰子对决 `Quick Duel/media/tts/`：96 条挑战结果，转完朗读。
+- 三个转盘游戏各有**不同**的转盘音 `wheel.ogg`：骰子对决=高频清脆滴答、幸运转盘=中频木质哒哒、星愿占卜屋=低频神秘旋转（音高/音色/节奏都不同），转动时循环播放、停下即停。
+- `Virtual Pet/media/act_*.ogg`：宠物 8 种动作各有独立音效（喂食/玩耍/洗澡/休息/摸摸/照顾/外出/技能）。
 
 各游戏音效接入（`common/sfx.py` 统一封装，复用已打开的 mixer，不另开音频设备）：
 - 从主界面进入任意功能 → 播该功能的 `welcome.ogg`。
-- 按键按下 → 播 `button.ogg`（带节流防长按连发）。**粘猴自带完整音效，游戏过程中不额外加按键音**，只在进入时播欢迎语。
+- 按键按下 → 播 `button.ogg`（带节流防长按连发）。**粘猴自带完整音效，游戏过程中不额外加按键音**，只在进入时播欢迎语；进入游戏后左下角 K1 位置显示"开始"。
 - 头脑挑战 → 只对错提示音（correct/wrong），不朗读。
-- 脑筋急转弯、诗词儿童模式 → 读题目与答案；宝可梦图鉴 → 切换读名字。
+- 脑筋急转弯 → 读题目与答案；诗词儿童模式 → 读题目 + 三个选项（"选项一/二/三"串行连播）+ 答案；宝可梦图鉴 → 切换读名字。
+- 幸运转盘/骰子对决 → 转动停下后朗读结果内容（换题/new round 会重读）。
+- 宠物乐园 → 每个动作开始时播对应专属音效。
 
-生成/更新音频（在开发机，需 piper-tts + onnxruntime + ffmpeg）：`python tools/generate_assets.py`（已存在自动跳过），可用 `--only sfx|welcome|riddles|poetry|pokemon` 分组、`--force` 强制重生成、`--list` 查看清单。语音用内置 Piper 女声 `common/models/zh_CN-huayan-medium.onnx`；按键/提示/转盘音由脚本合成。改题库后重跑对应分组即可。Pi 端零依赖，不需要 piper/模型。
+生成/更新音频（在开发机，需 `edge-tts` + `ffmpeg`，生成时需联网）：`python tools/generate_assets.py`（已存在自动跳过），可用 `--only sfx|petact|welcome|riddles|poetry|pokemon|wheel|duel` 分组、`--force` 强制重生成、`--list` 查看清单。语音用微软神经网络音色 **晓伊·萌版**（`zh-CN-XiaoyiNeural`，语速 +8%、音高 +30Hz，比旧 Piper 自然且更萌），可用环境变量 `WONDERBOX_VOICE` / `WONDERBOX_VOICE_RATE` / `WONDERBOX_VOICE_PITCH` 覆盖；按键/提示/转盘/宠物动作音由脚本合成。合成后压成 ogg 随项目走，Pi 端零依赖、零联网、不需要 piper/模型/edge-tts。改题库后用 `--force` 重跑对应分组。
 
 `tts.Speaker(pregen_dir=...).status()` 可看 `enabled`/`pregen_ready`/`play_count`/`miss_count`/`load_error` 排查。`POKEMON_NO_AUDIO=1` 静音。
 

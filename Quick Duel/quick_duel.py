@@ -20,6 +20,7 @@ wrap_text = wheel_support.wrap_text
 
 from common import audio as audio_output
 from common import sfx as sfx_helper
+from common import tts
 from common import ui_theme
 
 import pygame
@@ -587,6 +588,8 @@ def main():
 	screen = spi_lcd.init()
 	buttons = None
 	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
+	speaker = tts.Speaker(pregen_dir=os.path.join(BASE_DIR, "media", "tts"))
+	spoken_result = None
 	try:
 		if not spi_lcd.is_simulate():
 			try:
@@ -635,9 +638,19 @@ def main():
 			game.update(elapsed)
 			if getattr(game, "wheel", None) and game.wheel.phase == "result":
 				sound.loop_stop()
+				# 挑战转盘停下后朗读结果内容；新一局会重置为新的 key
+				result_key = (id(game.wheel), game.wheel.selected, game.wheel.task)
+				if result_key != spoken_result:
+					spoken_result = result_key
+					text = str(CHALLENGES[game.wheel.selected][2][game.wheel.task]).strip()
+					if speaker.has(text):
+						speaker.speak(text)
+			else:
+				spoken_result = None
 			display.draw(game)
 			present_frame(screen)
 	finally:
+		speaker.close()
 		sound.close()
 		if buttons is not None:
 			buttons.cleanup()

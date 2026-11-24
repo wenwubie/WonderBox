@@ -10,37 +10,41 @@
           "species": "pikachu",
           "name": "皮卡丘",
           "stats": {
-            "hunger": 24.999994689027467,
-            "happiness": 51.98325627326966,
-            "hygiene": 6.442605451212998,
-            "energy": 15.442605451212998,
-            "health": 81.99583067784707
+            "hunger": 45.945104499856626,
+            "happiness": 61.279996147155764,
+            "hygiene": 1.7393453250991067,
+            "energy": 12.739345325099105,
+            "health": 79.96838558326165
           },
           "sleeping": false,
-          "experience": 45,
-          "friendship": 4.726895040869714,
-          "stars": 12,
+          "experience": 51,
+          "friendship": 9.379728778468237,
+          "stars": 13,
           "food": 8,
           "dirt": 1,
           "cooldowns": {
-            "feed": 1795522270.187938,
+            "feed": 1795527109.2292137,
             "play": 1794831357.860722,
             "explore": 1794814394.314485,
-            "pat": 1794831676.5409472,
+            "pat": 1795526519.9928558,
             "sleep": 1794832896.6732821
           },
           "task_days": {
             "feed": "2026-11-24",
             "explore": "2026-11-16",
-            "pat": "2026-11-16"
+            "pat": "2026-11-24"
           },
-          "last_pat_at": 1794831076.5409472,
-          "activity": null,
+          "last_pat_at": 1795525919.9928558,
+          "activity": {
+            "kind": "wash",
+            "started_at": 1795525936.0625381,
+            "ends_at": 1795526836.0625381
+          },
           "accessories": [
             "none"
           ],
           "equipped": "none",
-          "updated_at": 1795521070.1943111
+          "updated_at": 1795525936.0625381
         }
       ]
     },
