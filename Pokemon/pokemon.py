@@ -9,15 +9,15 @@
     全部(n)     浏览所选世代的宝可梦
     未发现(n)   只看还没查看过的
     已发现(m)   只看已查看过的
-    已收藏(k)   只看长按 K2 收藏过的
+    已收藏(k)   只看长按 K1 收藏过的
     设置        显示顺序 + 第 1～4 世代筛选(界面风格在主界面"设置"里全局选择)
                 + 重置发现(两次 K3 确认清空全部世代的发现记录)
                 底部一行: 左 取消 | 右 保存
 
 按键:
     主界面:  K1 (GPIO5) 向上    K2 (GPIO23) 向下    K3 (GPIO24) 确定
-    浏览页:  K1 翻页  K2 上一只  K3 下一只;  长按 K2 收藏/取消收藏,
-             长按 K3 返回主界面
+    浏览页:  K1 翻页  K2 上一只  K3 下一只;  长按 K1 收藏/取消收藏,
+             长按 K2 重播名字语音, 长按 K3 返回主界面
 
 查看过的宝可梦自动记为"已发现", 持久保存于 pokedex_data/discovered.json;
 收藏记录持久保存于 pokedex_data/favorites.json。
@@ -571,7 +571,7 @@ def main():
     sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
     sound.welcome()
     print("主界面启动: K1 上一项 / K2 下一项 / K3 确定, 长按 K3 退出; "
-          "浏览页长按 K2 收藏, 模拟模式可点击底栏功能文字。")
+          "浏览页长按 K1 收藏、长按 K2 重播, 模拟模式可点击底栏功能文字。")
 
     MODES = ("all", "unseen", "found", "fav")
     MENU_ITEMS = 5
@@ -606,7 +606,7 @@ def main():
                     elif mode == "unseen":
                         msg = "所选世代没有未发现\n全部都发现啦!"
                     elif mode == "fav":
-                        msg = "还没有收藏的宝可梦\n浏览时长按 K2 收藏吧!"
+                        msg = "还没有收藏的宝可梦\n浏览时长按 K1 收藏吧!"
                     else:
                         msg = "所选世代没有宝可梦\n请检查世代设置"
                     message_loop(msg, hold)

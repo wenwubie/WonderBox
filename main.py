@@ -70,7 +70,9 @@ SETTINGS_ITEMS = (
     ("sfx_volume", "按键音量"),
     ("voice_volume", "语音音量"),
     ("voice_enabled", "语音提示"),
+    ("help", "宝盒使用说明"),
 )
+HELP_INDEX = len(SETTINGS_ITEMS) - 1
 
 
 class LauncherState:
@@ -83,6 +85,7 @@ class LauncherState:
         self.show_settings = False
         self.settings_selection = 0
         self.settings_editing = False
+        self.show_help = False
         self.show_category = None
         self.return_selection = MINI_GAMES_HOME_INDEX
 
@@ -127,6 +130,10 @@ class LauncherState:
             if action == "POWER":
                 return "EXIT"
             return "ACCEPT_DECLARATION" if action == "K3" else None
+        if self.show_help:
+            if action in ("K3", "POWER", "BACK") or action.startswith("SELECT_"):
+                self.show_help = False
+            return None
         if self.show_settings:
             count = len(SETTINGS_ITEMS)
             if action == "POWER":  # 长按 K3 直接返回主界面
@@ -149,12 +156,16 @@ class LauncherState:
                 self.settings_selection = (self.settings_selection + 1) % count
                 return None
             if action == "K3":
+                if self.settings_selection == HELP_INDEX:
+                    return "SHOW_HELP"
                 self.settings_editing = True
                 return None
             if action and action.startswith("SELECT_"):
                 index = int(action[-1:])
                 if 0 <= index < count:
                     self.settings_selection = index
+                    if index == HELP_INDEX:
+                        return "SHOW_HELP"
                     self.settings_editing = True
                 return None
             return None
@@ -225,8 +236,8 @@ DECLARATION_LINES = {
         "此宝盒由文武天尊",
         "耗时七七四十九天,",
         "花费九九八十一万亿",
-        "Token，打造而成。",
-        "仅允许文武天尊或他的好朋友",
+        "Token，手搓而成。",
+        "只允许天尊与好友",
         "文怡然、文焕然、欧泽轩、",
         "欧阳沐希使用，",
         "否则将大祸临头！切记切记！",
@@ -237,6 +248,30 @@ DECLARATION_LINES = {
         "仅允许文武天尊或他的好朋友",
         "文怡然、文焕然、欧泽轩、欧阳沐希使用，",
         "否则将大祸临头！切记切记！",
+    ),
+}
+
+# 设置页“宝盒使用说明”内容；横屏空间小，合并成较短的行。
+HELP_LINES = {
+    True: (
+        "宝盒使用说明",
+        "K1 上一项 / 翻页",
+        "K2 下一项 / 上一只",
+        "K3 确认 / 进入",
+        "长按 K3 返回 / 退出",
+        "长按 K2 重播语音",
+        "宝可梦：长按 K1 收藏",
+        "转盘：短按 K2 也重播",
+        "设置页：K1/K2 调整",
+        "K3 确认并保存",
+    ),
+    False: (
+        "宝盒使用说明",
+        "K1 上一项/翻页   K2 下一项/上一只",
+        "K3 确认/进入     长按 K3 返回/退出",
+        "长按 K2 重播语音（转盘短按 K2 也可）",
+        "宝可梦：长按 K1 收藏，短按 K1 翻页",
+        "设置页：K1/K2 调整，K3 确认保存",
     ),
 }
 
@@ -409,9 +444,10 @@ class LauncherDisplay:
                              (center[0] - 1, center[1] + 6), 2)
 
     def draw_footer(self, confirming, declaration=False, settings=False,
-                    settings_editing=False):
+                    settings_editing=False, help=False):
         pygame.draw.rect(self.screen, FOOTER_BG, (0, self.footer_top, self.width, 27))
-        labels = (("", "", "确认") if declaration else
+        labels = (("", "", "返回") if help else
+                  ("", "", "确认") if declaration else
                   ("上一项", "下一项", "调整") if settings and not settings_editing else
                   ("减小", "增大", "确认") if settings else
                   ("切换", "切换", "确认") if confirming else ("上一项", "下一项", "进入"))
@@ -423,7 +459,10 @@ class LauncherDisplay:
         self.screen.fill(BACKGROUND)
         if state.show_settings:
             self.draw_settings_page(state)
-            self.draw_footer(False, settings=True, settings_editing=state.settings_editing)
+            self.draw_footer(False, settings=True, settings_editing=state.settings_editing,
+                             help=state.show_help)
+            if state.show_help:
+                self.draw_help()
             return
         for dot_y in range(10, self.footer_top, 24):
             for dot_x in range(12, self.width, 24):
@@ -528,6 +567,8 @@ class LauncherDisplay:
             return ui_theme.style_name()
         if key == "voice_enabled":
             return "开" if sound_settings.voice_enabled() else "关"
+        if key == "help":
+            return "查看"
         return "%d%%" % sound_settings.settings()[key]
 
     def draw_settings_page(self, state):
@@ -561,6 +602,24 @@ class LauncherDisplay:
                 if hint_y + self.small_font.get_height() <= self.footer_top:
                     self.centered(marker, self.small_font, LIGHT_MUTED,
                                   (self.width // 2, hint_y + self.small_font.get_height() // 2))
+
+    def draw_help(self):
+        """设置页里的“宝盒使用说明”：半屏说明卡，K3/长按 K3 返回。"""
+        top = self.section_y - 6
+        bottom = self.footer_top - 4
+        panel = pygame.Rect(8, top, self.width - 16, bottom - top)
+        pygame.draw.rect(self.screen, PAPER, panel, border_radius=6)
+        pygame.draw.rect(self.screen, TEAL, panel, 1, border_radius=6)
+        lines = HELP_LINES[self.portrait]
+        line_gap = 17 if self.portrait else 18
+        first_y = top + 12 + self.small_font.get_height() // 2
+        for index, line in enumerate(lines):
+            color = TEAL if index == 0 else INK
+            self.centered(line, self.small_font, color, (self.width // 2, first_y + index * line_gap))
+        last_y = first_y + (len(lines) - 1) * line_gap + 12
+        if last_y < bottom:
+            self.centered("按 K3 返回", self.small_font, MUTED,
+                          (self.width // 2, (last_y + bottom) // 2))
 
     def draw_declaration(self):
         self.centered("使用声明", self.dialog_font, LIGHT, (self.width // 2, self.section_y + 12))
@@ -830,9 +889,13 @@ class LauncherApp:
                     self.state.show_settings = True
                     self.state.settings_editing = False
                     break
+                if result == "SHOW_HELP":
+                    self.state.show_help = True
+                    break
                 if result == "CLOSE_SETTINGS":
                     self.state.show_settings = False
                     self.state.settings_editing = False
+                    self.state.show_help = False
                     self.apply_sound_settings()  # 离开设置页再同步一次，确保已生效
                     break
                 if result in ("OPEN_CATEGORY", "CLOSE_CATEGORY"):

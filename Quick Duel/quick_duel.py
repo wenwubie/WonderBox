@@ -590,18 +590,20 @@ def main():
 	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
 	speaker = tts.Speaker(pregen_dir=os.path.join(BASE_DIR, "media", "tts"))
 	spoken_result = None
+	last_text = None  # 最近一次朗读的挑战内容，长按 K2 原地重播
 	try:
 		if not spi_lcd.is_simulate():
 			try:
 				gpio = importlib.import_module("RPi.GPIO")
-				buttons = DuelGPIOButtons(gpio)
+				buttons = DuelGPIOButtons(gpio, k2_long_action="REPLAY")
 			except Exception as error:
 				raise RuntimeError("GPIO 初始化失败，请检查 RPi.GPIO 和按键连接。") from error
 		else:
 			pygame.display.set_caption("骰子对决")
 		display = DuelDisplay(screen)
 		game = DuelGame()
-		hold = spi_lcd.SimulatedHold("K3", "BACK", wheel_support.QUIT_HOLD_SECONDS)
+		hold = spi_lcd.SimulatedHold("K3", "BACK", wheel_support.QUIT_HOLD_SECONDS,
+								 k2_long_action="REPLAY")
 		clock = pygame.time.Clock()
 		running = True
 		sound.welcome()
@@ -617,6 +619,10 @@ def main():
 			for action in actions:
 				if sfx_helper.is_press(action):
 					sound.button()
+				if action == "REPLAY":
+					if last_text:
+						speaker.speak(last_text)  # 原地重播，不新开一局
+					continue
 				if action == "QUIT":
 					running = False
 					break
@@ -644,9 +650,11 @@ def main():
 					spoken_result = result_key
 					text = str(CHALLENGES[game.wheel.selected][2][game.wheel.task]).strip()
 					if speaker.has(text):
+						last_text = text
 						speaker.speak(text)
 			else:
 				spoken_result = None
+				last_text = None
 			display.draw(game)
 			present_frame(screen)
 	finally:

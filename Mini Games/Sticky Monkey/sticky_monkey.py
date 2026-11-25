@@ -382,12 +382,6 @@ class StickyMonkeyDisplay:
 			button = pygame.transform.smoothscale(self.play_button, (button_size, button_size))
 			self.screen.blit(button, button.get_rect(center=(self.width // 2,
 												 round(1580 * self.scale_y))))
-			self.text("BEST  %d" % game.best_score, self.score_font, INK,
-					  (self.width // 2, round(1320 * self.scale_y)))
-			recorded_at = format_best_time(game.best_time)
-			if recorded_at:
-				self.text(recorded_at, self.small_font, INK,
-						  (self.width // 2, round(1380 * self.scale_y)))
 		else:
 			self.draw_platform(game, game.base_x, game.score % 6)
 			self.draw_platform(game, game.target_x, (game.score + 1) % 6)
@@ -411,13 +405,15 @@ class StickyMonkeyDisplay:
 												   round(1400 * self.scale_y))))
 		action_hint = {
 			"title": "开始",
-			"ready": "开始",
+			"ready": "蓄力",
 			"charging": "松开",
 			"game_over": "重来",
 		}.get(game.state)
 		hint_y = self.height - max(12, round(25 * self.scale_y))
 		if action_hint:
-			self.text(action_hint, self.small_font, PAPER,
+			# 标题页是浅色背景，用深色字才看得见；游戏页是深色背景，用浅色字。
+			hint_color = INK if game.state == "title" else PAPER
+			self.text(action_hint, self.small_font, hint_color,
 					  (max(28, round(60 * self.scale_x)), hint_y))
 		if game.state != "title":
 			return_center = (self.width - max(28, round(60 * self.scale_x)), hint_y)

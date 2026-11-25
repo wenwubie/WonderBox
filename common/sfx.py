@@ -32,7 +32,8 @@ COMMON_MEDIA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
                             "common", "media")
 
 # 视为“按下”的动作（用于触发按键音）；长按/退出类不触发
-_PRESS_ACTIONS = {"K1", "K2", "K3", "K1_DOWN", "K1_UP", "K3_DOWN", "K3_CANCEL"}
+_PRESS_ACTIONS = {"K1", "K2", "K3", "REPLAY",
+                  "K1_DOWN", "K1_UP", "K3_DOWN", "K3_CANCEL"}
 _PRESS_PREFIXES = ("SELECT_", "MODE_", "GAME_", "CHOOSE_", "SETUP_", "DEATH_", "POWER_CONFIRM")
 
 

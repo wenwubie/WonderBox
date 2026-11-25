@@ -600,11 +600,12 @@ def main():
 	speaker = tts.Speaker()
 	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
 	spoken = None
+	last_text = None  # 最近一次朗读的原文，长按 K2 原地重播
 	try:
 		if not spi_lcd.is_simulate():
 			try:
 				gpio = importlib.import_module("RPi.GPIO")
-				buttons = GPIOButtons(gpio)
+				buttons = GPIOButtons(gpio, k2_long_action="REPLAY")
 			except Exception as error:
 				raise RuntimeError("GPIO 初始化失败，请检查 RPi.GPIO 和按键连接。") from error
 		else:
@@ -613,7 +614,8 @@ def main():
 		riddles = load_riddles()
 		app = RiddleApp(riddles, history=RiddleHistory(default_history_path()))
 		sound.welcome()  # 从主界面进入时的语音欢迎
-		hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", wheel_support.QUIT_HOLD_SECONDS)
+		hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", wheel_support.QUIT_HOLD_SECONDS,
+								 k2_long_action="REPLAY")
 		clock = pygame.time.Clock()
 		running = True
 		print("脑筋急转弯已启动：K1/K2 选择，K3 确认或显示答案；长按 K3 返回菜单，菜单中长按退出。")
@@ -628,6 +630,10 @@ def main():
 			for action in actions:
 				if sfx_helper.is_press(action):
 					sound.button()  # 每次短按都有按键音反馈
+				if action == "REPLAY":
+					if last_text:
+						speaker.speak(last_text)  # 原地重播，不切题
+					continue
 				if action == "QUIT":
 					running = False
 					break
@@ -650,9 +656,11 @@ def main():
 				if key is not None and key != spoken:
 					spoken = key
 					if text:
+						last_text = text
 						speaker.speak(text)  # 本地 ogg，命中即播、零延迟
 				elif key is None:
 					spoken = None
+					last_text = None
 				present_frame(screen)
 	finally:
 		sound.close()

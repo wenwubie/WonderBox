@@ -362,8 +362,10 @@ class PoetryDisplay:
 		self.screen.blit(image, (self.width - image.get_width() - 10, 14))
 		pygame.draw.line(self.screen, LINE, (10, 36), (self.width - 10, 36))
 
-	def draw_footer(self, labels, enabled):
+	def draw_footer(self, labels, enabled, allow_replay=True):
 		pygame.draw.rect(self.screen, (218, 237, 227), (0, self.footer_top, self.width, 27))
+		if allow_replay and labels[1] in ("", "无功能"):
+			labels = (labels[0], "重播语音", labels[2])
 		for index, (label, rect) in enumerate(zip(labels, self.buttons)):
 			inset = rect.inflate(-5, -6)
 			color, text_color = BUTTON_COLORS[index] if enabled[index] else (DISABLED_BG, DISABLED_TEXT)
@@ -441,14 +443,16 @@ class PoetryDisplay:
 					  (center, 122 if self.portrait else 108))
 		self.centered(MODES[game.mode][0], self.small_font, MUTED,
 					  (center, 166 if self.portrait else 150))
-		self.draw_footer(("菜单", "无功能", "再玩"), (True, False, True))
+		self.draw_footer(("菜单", "无功能", "再玩"), (True, False, True),
+						 allow_replay=False)
 
 	def draw_error(self):
 		self.screen.fill(BACKGROUND)
 		self.draw_header(None)
 		self.centered("诗词题库不可用", self.mode_font, CORAL, (self.width // 2, self.height // 2 - 20))
 		self.centered("请检查诗词数据文件", self.small_font, INK, (self.width // 2, self.height // 2 + 5))
-		self.draw_footer(("无功能", "无功能", "返回"), (False, False, True))
+		self.draw_footer(("无功能", "无功能", "返回"), (False, False, True),
+						 allow_replay=False)
 
 	def draw(self, game):
 		self.screen.fill(BACKGROUND)
@@ -505,12 +509,14 @@ def main():
 	speaker = tts.Speaker(pregen_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)),
 												"media", "tts"))
 	spoken = None
+	last_texts = None  # 最近一次朗读的文本串，长按 K2 原地重播
 	try:
 		if spi_lcd.is_simulate():
 			pygame.display.set_caption("诗词大赛")
 		else:
 			try:
-				buttons = GPIOButtons(importlib.import_module("RPi.GPIO"))
+				buttons = GPIOButtons(importlib.import_module("RPi.GPIO"),
+								  k2_long_action="REPLAY")
 			except Exception as error:
 				raise RuntimeError("GPIO 初始化失败，请检查 RPi.GPIO 和按键连接。") from error
 		display = PoetryDisplay(screen)
@@ -520,7 +526,8 @@ def main():
 		except (OSError, sqlite3.Error, ValueError) as error:
 			print("诗词题库不可用:", error)
 			game = None
-		hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", QUIT_HOLD_SECONDS)
+		hold = spi_lcd.SimulatedHold("K3", "HOLD_K3", QUIT_HOLD_SECONDS,
+								 k2_long_action="REPLAY")
 		clock = pygame.time.Clock()
 		running = True
 		sound.welcome()
@@ -536,6 +543,10 @@ def main():
 			for action in actions:
 				if sfx_helper.is_press(action):
 					sound.button()  # 每次短按都有按键音反馈
+				if action == "REPLAY":
+					if last_texts and all(speaker.has(text) for text in last_texts):
+						speaker.speak_sequence(last_texts)  # 原地重播，不换题
+					continue
 				if action == "EXIT" or (game is None and action in ("BACK", "K3")):
 					running = False
 					break
@@ -562,9 +573,11 @@ def main():
 				if key is not None and key != spoken:
 					spoken = key
 					if texts and all(speaker.has(text) for text in texts):
+						last_texts = texts
 						speaker.speak_sequence(texts)
 				elif key is None:
 					spoken = None
+					last_texts = None
 			if not spi_lcd.present(poll_events=False):
 				break
 	finally:

@@ -362,6 +362,8 @@ class WheelDisplay:
 			labels, enabled = ("换题", "无功能", "停下"), (False, False, True)
 		else:
 			labels, enabled = ("换题", "无功能", "停下"), (False, False, False)
+		if labels[1] in ("", "无功能"):
+			labels = (labels[0], "重播语音", labels[2])
 		colors = ((248, 169, 138), (124, 202, 190), (255, 211, 117))
 		for index, rect in enumerate(self.buttons):
 			color = colors[index] if enabled[index] else (229, 235, 230)
@@ -422,23 +424,25 @@ def main():
 	sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
 	speaker = tts.Speaker(pregen_dir=os.path.join(BASE_DIR, "media", "tts"))
 	spoken_result = None
+	last_text = None  # 最近一次朗读的任务内容，K2 短按/长按都可重播
 	try:
 		if not spi_lcd.is_simulate():
 			try:
 				gpio = importlib.import_module("RPi.GPIO")
-				buttons = GPIOButtons(gpio)
+				buttons = GPIOButtons(gpio, k2_long_action="REPLAY")
 			except Exception as error:
 				raise RuntimeError("GPIO 初始化失败，请检查 RPi.GPIO 和按键连接。") from error
 		else:
 			pygame.display.set_caption("幸运转盘")
 		display = WheelDisplay(screen)
 		wheel = LuckyWheel()
-		hold = spi_lcd.SimulatedHold("K3", "QUIT", QUIT_HOLD_SECONDS)
+		hold = spi_lcd.SimulatedHold("K3", "QUIT", QUIT_HOLD_SECONDS,
+								 k2_long_action="REPLAY")
 		clock = pygame.time.Clock()
 		running = True
 		sound.welcome()
 		exit_hint = "按 Esc 退出" if buttons is None else "长按 K3 退出"
-		print("幸运转盘已启动：K3 开始和停下，K1 换题；%s。" % exit_hint)
+		print("幸运转盘已启动：K3 开始和停下，K1 换题，K2 重播语音；%s。" % exit_hint)
 		while running:
 			elapsed = clock.tick(30) / 1000.0
 			if buttons is None:
@@ -450,6 +454,10 @@ def main():
 			for action in actions:
 				if sfx_helper.is_press(action):
 					sound.button()
+				if action in ("K2", "REPLAY"):
+					if last_text:
+						speaker.speak(last_text)  # K2 无其它功能，短按/长按都重播
+					continue
 				if action == "QUIT":
 					running = False
 					break
@@ -471,9 +479,11 @@ def main():
 					spoken_result = result_key
 					text = str(GAMES[wheel.selected][2][wheel.task]).strip()
 					if speaker.has(text):
+						last_text = text
 						speaker.speak(text)
 			else:
 				spoken_result = None
+				last_text = None
 			display.draw(wheel)
 			present_frame(screen)
 	finally:

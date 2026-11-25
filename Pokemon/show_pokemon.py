@@ -10,8 +10,8 @@
     末页(克制): 本只宝可梦的属性克制关系(克制/被克制/抵抗/免疫)
 
 按键:
-    K1 (GPIO5): 下一页
-    K2 (GPIO23): 短按切换到上一只宝可梦; 长按 0.6 秒收藏/取消收藏当前宝可梦
+    K1 (GPIO5): 短按下一页; 长按 0.6 秒收藏/取消收藏当前宝可梦
+    K2 (GPIO23): 短按切换到上一只宝可梦; 长按 0.7 秒重播名字语音
     K3 (GPIO24): 切换到下一只宝可梦(长按返回)
 
 收藏记录持久保存于 pokedex_data/favorites.json, 顶栏显示当前是否已收藏。
@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(BASE_DIR))
 from common import spi_lcd
 from common import ui_theme
 from common.button_input import BUTTON_PINS as BUTTONS
+from common.button_input import REPLAY_HOLD_SECONDS
 from common import audio as audio_output
 from common import sfx as sfx_helper
 from common import tts
@@ -45,7 +46,7 @@ DATA_FILE = os.path.join(BASE_DIR, "pokedex_data", "pokemon_platinum.json")
 IMG_DIR = os.path.join(BASE_DIR, "pokedex_data", "images")
 SETTINGS_FILE = os.path.join(BASE_DIR, "pokedex_data", "settings.json")
 FAVORITES_FILE = os.path.join(BASE_DIR, "pokedex_data", "favorites.json")
-FAVORITE_HOLD_SECONDS = 0.6   # 长按 K2 收藏/取消收藏的秒数(短按仍是"上一只")
+FAVORITE_HOLD_SECONDS = 0.6   # 长按 K1 收藏/取消收藏的秒数(短按仍是"下一页")
 
 FB_WIDTH = spi_lcd.FB_WIDTH
 FB_HEIGHT = spi_lcd.FB_HEIGHT
@@ -339,7 +340,7 @@ def draw_top_bar(p, page, pages, favorites=None):
     # 并兼作操作提示。收藏一律用爱心表示, 与"已发现"的星星区分开。
     active = favorites if favorites is not None else _favorite_ids
     fav = is_favorite(p, active)
-    label = "已收藏" if fav else "长按K2收藏"
+    label = "已收藏" if fav else "长按K1收藏"
     color = ACCENT_COLOR if fav else SUB_COLOR
     left_end = 8 + t1.get_width()
     right_start = FB_WIDTH - t2.get_width() - 8
@@ -685,22 +686,20 @@ def handle_event(name, state, mon_list=None):
 # ---------------------------------------------------------------------------
 # 浏览主循环: 可独立运行, 也可被 pokemon.py 当作"浏览页"调用
 # ---------------------------------------------------------------------------
-def input_actions(mouse_action, hold=None, fav_hold=None):
+def input_actions(mouse_action, hold=None, fav_hold=None, replay_hold=None):
     """采集一帧动作。
 
-    hold     : K3 长按手势(短按 K3 / 长按 BACK)
-    fav_hold : K2 长按手势(短按 K2 / 长按 FAVORITE); 长按期间会屏蔽
-               poll_buttons 产生的 K2 连发, 避免误翻到上一只。
+    hold        : K3 长按手势(短按 K3 / 长按 BACK)
+    fav_hold    : K1 长按手势(短按 K1 / 长按 FAVORITE)
+    replay_hold : K2 长按手势(短按 K2 / 长按 REPLAY 重播名字)
+    有手势的键会屏蔽 poll_buttons 的原始事件(含 K1 连发), 短按由手势松开时发出。
     """
+    gestures = ((hold, "K3"), (fav_hold, "K1"), (replay_hold, "K2"))
     actions = []
     if gpio is not None:
-        blocked = set()
-        if hold is not None:
-            blocked.add("K3")
-        if fav_hold is not None:
-            blocked.add("K2")
+        blocked = {key for gesture, key in gestures if gesture is not None}
         actions = [name for name in poll_buttons() if name not in blocked]
-        for gesture, key in ((hold, "K3"), (fav_hold, "K2")):
+        for gesture, key in gestures:
             if gesture is None:
                 continue
             source = ("gpio", key)
@@ -723,26 +722,27 @@ def input_actions(mouse_action, hold=None, fav_hold=None):
             action = handle_key(event.key)
         elif event.type == pygame.MOUSEBUTTONDOWN:
             action = mouse_action(event)
-        # 两路长按手势不能串联覆盖: 按下事件交给"拥有该键"的手势(它可能吞掉
-        # 短按), 松开事件则两路都跑 release, 取第一个有效结果。否则 K3 松开
-        # 产生的 "K3" 会被 K2 手势的 release(None) 冲掉。
-        if fav_hold is not None and action == "K2":
-            action = fav_hold.process_event(event, action)
-        elif hold is not None and action == "K3":
-            action = hold.process_event(event, action)
+        # 按下事件交给"拥有该键"的手势(它可能吞掉短按); 松开/其它事件则
+        # 依次跑所有手势, 取第一个有效结果, 避免一路的 release(None) 冲掉结果。
+        if action in ("K1", "K2", "K3"):
+            owner = next((gesture for gesture, key in gestures
+                          if key == action and gesture is not None), None)
+            if owner is not None:
+                action = owner.process_event(event, action)
         else:
             original = action
             action = None
-            for gesture in (hold, fav_hold):
-                if gesture is not None:
-                    emitted = gesture.process_event(event, original)
-                    if emitted and action is None:
-                        action = emitted
+            for gesture, key in gestures:
+                if gesture is None:
+                    continue
+                emitted = gesture.process_event(event, original)
+                if emitted and action is None:
+                    action = emitted
             if action is None:
                 action = original
         if action:
             actions.append(action)
-    for gesture in (hold, fav_hold):
+    for gesture, key in gestures:
         if gesture is not None:
             action = gesture.poll()
             if action:
@@ -751,7 +751,7 @@ def input_actions(mouse_action, hold=None, fav_hold=None):
 
 
 def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None,
-           favorites=None, fav_hold=None, favorites_file=None):
+           favorites=None, fav_hold=None, replay_hold=None, favorites_file=None):
     """浏览模式主循环。
 
     参数:
@@ -759,10 +759,11 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None,
       on_viewed : 每次展示某只宝可梦时的回调 on_viewed(pokemon)
       back_hold : K3 按住超过该秒数返回(调用方); 短按 K3 仍是"下一只"
       favorites : 收藏 id 集合(原地修改并即时落盘); 缺省从 favorites.json 读取
-      fav_hold  : K2 长按手势, 缺省用 SimulatedHold("K2", "FAVORITE", 0.6)
+      fav_hold    : K1 长按手势, 缺省用 SimulatedHold("K1", "FAVORITE", 0.6)
+      replay_hold : K2 长按手势, 缺省用 SimulatedHold("K2", "REPLAY", 0.7)
       favorites_file : 覆盖收藏文件路径(主界面传入, 便于与设置同目录/测试隔离)
 
-    长按 K2 收藏/取消收藏当前宝可梦(短按 K2 仍是"上一只"), 顶栏显示收藏状态。
+    长按 K1 收藏/取消收藏(短按 K1 仍是"下一页"); 长按 K2 重播名字语音(短按 K2 "上一只")。
 
     返回: "back"=长按K3返回; "quit"=窗口关闭/Esc。
 
@@ -777,7 +778,9 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None,
     if hold is None:
         hold = spi_lcd.SimulatedHold("K3", "BACK", back_hold)
     if fav_hold is None:
-        fav_hold = spi_lcd.SimulatedHold("K2", "FAVORITE", FAVORITE_HOLD_SECONDS)
+        fav_hold = spi_lcd.SimulatedHold("K1", "FAVORITE", FAVORITE_HOLD_SECONDS)
+    if replay_hold is None:
+        replay_hold = spi_lcd.SimulatedHold("K2", "REPLAY", REPLAY_HOLD_SECONDS)
     if favorites is None:
         favorites = load_favorites(favorites_file)
     _favorite_ids = favorites
@@ -807,7 +810,7 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None,
     while running:
         actions = input_actions(
             lambda event: spi_lcd.button_from_mouse(event, _footer_button_rects),
-            hold, fav_hold)
+            hold, fav_hold, replay_hold)
         if actions is None:
             break
         for action in actions:
@@ -816,6 +819,9 @@ def browse(mon_list=None, on_viewed=None, back_hold=0.8, hold=None,
             if action == "BACK":
                 sound.close()
                 return "back"
+            if action == "REPLAY":
+                say_name()  # 原地重播当前宝可梦名字，不切换
+                continue
             if action == "FAVORITE":
                 favored, favorites = toggle_favorite(cur(), favorites)
                 save_favorites(favorites, favorites_file)
