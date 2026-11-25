@@ -168,4 +168,19 @@ class SFX:
 
     def close(self):
         # 只停音源，不 quit mixer——设备关闭交给各游戏 main() 的 pygame.quit()
+        # 退出前先归零音量并淡出，避免截断波形/关闭 ALSA 瞬间的"啪"声。
+        if not self.enabled:
+            return
+        try:
+            import time
+            import pygame
+            for source in self.sounds.values():
+                try:
+                    source.set_volume(0.0)
+                except Exception:
+                    pass
+            pygame.mixer.fadeout(80)
+            time.sleep(0.1)
+        except Exception:
+            pass
         self.stop()

@@ -33,6 +33,31 @@ DEFAULT_PREGEN_DIR = os.path.join(_ROOT_DIR, "Riddles", "media", "tts")
 PREGEN_DIR = os.environ.get("WONDERBOX_TTS_MEDIA", DEFAULT_PREGEN_DIR)
 PREGEN_EXT = ".ogg"
 
+# 语音起停加短淡入淡出：切宝可梦/切题目时旧朗读会被打断，硬停波形会"咔哒"一声。
+VOICE_FADE_IN_MS = 20
+VOICE_FADE_OUT_MS = 30
+
+
+def _fade_stop(sound):
+    """尽量淡出停止一个音源；老的 pygame/mock 没有 fadeout 时退回 stop。"""
+    if sound is None:
+        return
+    try:
+        sound.fadeout(VOICE_FADE_OUT_MS)
+    except Exception:
+        try:
+            sound.stop()
+        except Exception:
+            pass
+
+
+def _play_voice(sound):
+    """带淡入播放语音；不支持 fadein 的 pygame 版本退回普通播放。"""
+    try:
+        return sound.play(fadein=VOICE_FADE_IN_MS)
+    except TypeError:
+        return sound.play()
+
 
 def _env_flag(name):
     value = os.environ.get(name)
@@ -154,11 +179,7 @@ class Speaker:
             generation = self._generation
             sound = self._sound
             self._sound = None
-        if sound is not None:
-            try:
-                sound.stop()
-            except Exception:
-                pass
+        _fade_stop(sound)
         thread = threading.Thread(target=self._run, args=(path, generation), daemon=True)
         with self._lock:
             self._threads.add(thread)
@@ -190,11 +211,7 @@ class Speaker:
             generation = self._generation
             previous = self._sound
             self._sound = None
-        if previous is not None:
-            try:
-                previous.stop()
-            except Exception:
-                pass
+        _fade_stop(previous)
         thread = threading.Thread(target=self._run_sequence, args=(paths, generation), daemon=True)
         with self._lock:
             self._threads.add(thread)
@@ -228,7 +245,7 @@ class Speaker:
                     self._sound = sound
                     self.play_count += 1
                 try:
-                    channel = sound.play()
+                    channel = _play_voice(sound)
                 except Exception as error:
                     self._load_error = "播放失败: %s" % error
                     return
@@ -236,10 +253,7 @@ class Speaker:
                 while getattr(channel, "get_busy", lambda: False)():
                     with self._lock:
                         if generation != self._generation:
-                            try:
-                                sound.stop()
-                            except Exception:
-                                pass
+                            _fade_stop(sound)
                             return
                     time.sleep(0.03)
         finally:
@@ -284,7 +298,7 @@ class Speaker:
                 self._sound = sound
                 self.play_count += 1
             try:
-                sound.play()
+                _play_voice(sound)
             except Exception as error:
                 self._load_error = "播放失败: %s" % error
         finally:
@@ -296,11 +310,7 @@ class Speaker:
             self._generation += 1
             sound = self._sound
             self._sound = None
-        if sound is not None:
-            try:
-                sound.stop()
-            except Exception:
-                pass
+        _fade_stop(sound)
 
     def close(self):
         self.stop()

@@ -302,24 +302,28 @@ def draw_badge_flow(names, x, y, max_w, max_rows=3):
 # 页面绘制
 # ---------------------------------------------------------------------------
 def draw_heart_icon(cx, cy, size, color, hollow=False, background=None):
-    """画收藏爱心(两个上圆弧 + 下尖角)。
+    """画收藏爱心(两瓣扁椭圆 + 下尖角), 左右严格对称、整体略扁。
 
-    hollow=True 时用底色再画一圈稍小的爱心, 形成"未收藏"的空心描边效果。
+    所有几何量先取整再以 cx 为中心镜像, 避免小尺寸下 int() 截断让尖角偏左/偏右。
     不依赖字体里的 ♥ 字符, 真机 wqy 字体也能正常显示。
+    hollow=True 时用底色再画一圈稍小的爱心, 形成"未收藏"的空心描边效果。
     """
     def heart(fill, scale):
-        r = size * scale / 2.0
-        top = cy - r * 0.35
-        pygame.draw.circle(screen, fill, (int(cx - r * 0.4), int(top)),
-                           max(1, int(r * 0.5)))
-        pygame.draw.circle(screen, fill, (int(cx + r * 0.4), int(top)),
-                           max(1, int(r * 0.5)))
-        pygame.draw.polygon(screen, fill, [(int(cx - r * 0.9), int(top)),
-                                           (int(cx + r * 0.9), int(top)),
-                                           (int(cx), int(cy + r * 0.95))])
+        half = max(2, int(round(size * 0.45 * scale)))       # 半宽, 总宽 2*half+1
+        lobe_h = max(3, int(round(half * 0.8)) | 1)          # 椭圆高度取奇数, 中线落在整像素
+        rise = max(1, int(round(half * 0.45)))               # 两瓣中心相对 cy 上移
+        drop = max(2, int(round(half * 0.75)))               # 尖角相对 cy 下移
+        mid_y = cy - rise
+        top = mid_y - lobe_h // 2
+        # 两瓣各占 half+1 像素宽, 在中心列重叠, 关于 cx 完全对称
+        pygame.draw.ellipse(screen, fill, (cx - half, top, half + 1, lobe_h))
+        pygame.draw.ellipse(screen, fill, (cx, top, half + 1, lobe_h))
+        # 下半尖角: 顶边与椭圆中线齐平, 盖住椭圆下半部
+        pygame.draw.polygon(screen, fill,
+                            [(cx - half, mid_y), (cx + half, mid_y), (cx, cy + drop)])
     if hollow:
         heart(color, 1.0)
-        heart(background or BAR_COLOR, 0.62)
+        heart(background or BAR_COLOR, 0.6)
     else:
         heart(color, 1.0)
 
