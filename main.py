@@ -707,7 +707,6 @@ class LauncherApp:
         self.hold = spi_lcd.SimulatedHold("K3", "POWER", QUIT_HOLD_SECONDS)
         self.clock = pygame.time.Clock()
         self.sound = sfx_helper.SFX(sfx_helper.game_media(__file__))
-        audio_output.sustain_device()  # 真机保持 dmix 设备常开，进出游戏不开关功放
         self.release_gate = False
         if self.simulate:
             pygame.display.set_caption("Wonder Box 奇趣宝盒")
@@ -721,24 +720,18 @@ class LauncherApp:
             except Exception as error:
                 raise RuntimeError("GPIO 初始化失败，请检查 RPi.GPIO 和按键连接。") from error
 
-    def close(self, keep_audio=False):
-        """退出启动器；keep_audio=True 时只释放显示/GPIO，保留 dmix 音频设备。"""
+    def close(self):
+        """退出启动器，释放显示/GPIO/音频设备。"""
         try:
             if self.sound is not None:
-                if keep_audio:
-                    self.sound.stop()  # 不 mixer.fadeout，静音循环继续占着设备
-                else:
-                    self.sound.close()
+                self.sound.close()
         finally:
             try:
                 if self.buttons is not None:
                     self.buttons.cleanup()
                     self.buttons = None
             finally:
-                if keep_audio:
-                    pygame.display.quit()  # 子游戏会重新 init 显示；音频设备不关
-                else:
-                    pygame.quit()
+                pygame.quit()
 
     def poll_actions(self):
         if self.buttons is not None:
@@ -771,7 +764,7 @@ class LauncherApp:
         if game.name == "诗词大赛":
             self.display.draw_launching(self.state, game.name)
             spi_lcd.present(poll_events=False)
-        self.close(keep_audio=True)  # 音频设备全程常开，避免进出游戏时功放爆音
+        self.close()
         notice = ""
         try:
             if launch_game(game, simulate, portrait) != 0:

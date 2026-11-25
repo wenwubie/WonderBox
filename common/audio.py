@@ -34,6 +34,7 @@ SIMULATE_AUDIO = None
 # 要在 pygame.init()（即 spi_lcd.init()）之前调用 prepare() 才生效。
 _ACTIVATED = False
 
+
 # 淡入毫秒数：消除音效/背景乐起播瞬间的 click 声；0 表示关闭
 FADE_IN_MS = 220
 MUSIC_FADE_IN_MS = 600
@@ -67,26 +68,14 @@ def is_simulate() -> bool:
     return want_simulate()
 
 
-def _dmix_device():
-    """真机上取 googlevoicehat 声卡的 dmix PCM 名，供多进程共享同一音频设备。"""
-    try:
-        with open("/proc/asound/cards", encoding="ascii", errors="ignore") as source:
-            for line in source:
-                match = re.search(r"\[([^\]]+)\]", line)
-                if match:
-                    return "dmix:CARD=%s,DEV=0" % match.group(1).strip()
-    except OSError:
-        pass
-    return None
-
-
 def prepare() -> None:
     """声明本程序需要声音，并按环境设置 SDL 音频驱动。
 
     必须在 pygame.init()（即 spi_lcd.init()）之前调用：
     - 让 spi_lcd 跳过 dummy 音频驱动；
-    - 真机固定 ALSA + dmix，模拟清掉 dummy 走系统声卡。
-    用 dmix 后启动器和子游戏可以共享同一个硬件设备，进出游戏不关开功放。
+    - 真机固定 ALSA，模拟清掉 dummy 走系统声卡。
+    不强制 SDL_AUDIODEV=dmix——实测 googlevoicehat 上 dmix 打不开会令
+    mixer 初始化失败、语音/音效全没；走系统 default（自带 plug 转换）正常。
     """
     global _ACTIVATED
     if is_no_audio():
@@ -95,12 +84,11 @@ def prepare() -> None:
     _ACTIVATED = True
     if want_simulate():
         os.environ.pop("SDL_AUDIODRIVER", None)
+        os.environ.pop("SDL_AUDIODEV", None)
     else:
         os.environ["SDL_AUDIODRIVER"] = "alsa"
-        if "SDL_AUDIODEV" not in os.environ:
-            device = _dmix_device()
-            if device:
-                os.environ["SDL_AUDIODEV"] = device
+        # 不强制 SDL_AUDIODEV，交给 SDL/ALSA 默认配置（default 自带 plug 转换）
+        os.environ.pop("SDL_AUDIODEV", None)
 
 
 def is_activated() -> bool:
