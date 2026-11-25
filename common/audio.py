@@ -15,7 +15,10 @@
 """
 from __future__ import annotations
 
+import io
 import os
+import re
+import wave
 
 from common import sound_settings
 
@@ -64,13 +67,26 @@ def is_simulate() -> bool:
     return want_simulate()
 
 
+def _dmix_device():
+    """真机上取 googlevoicehat 声卡的 dmix PCM 名，供多进程共享同一音频设备。"""
+    try:
+        with open("/proc/asound/cards", encoding="ascii", errors="ignore") as source:
+            for line in source:
+                match = re.search(r"\[([^\]]+)\]", line)
+                if match:
+                    return "dmix:CARD=%s,DEV=0" % match.group(1).strip()
+    except OSError:
+        pass
+    return None
+
+
 def prepare() -> None:
     """声明本程序需要声音，并按环境设置 SDL 音频驱动。
 
     必须在 pygame.init()（即 spi_lcd.init()）之前调用：
     - 让 spi_lcd 跳过 dummy 音频驱动；
-    - 真机固定 ALSA，模拟清掉 dummy 走系统声卡。
-    这样 audio 设备在 pygame.init() 阶段只打开一次，避免反复开关的爆音。
+    - 真机固定 ALSA + dmix，模拟清掉 dummy 走系统声卡。
+    用 dmix 后启动器和子游戏可以共享同一个硬件设备，进出游戏不关开功放。
     """
     global _ACTIVATED
     if is_no_audio():
@@ -81,6 +97,10 @@ def prepare() -> None:
         os.environ.pop("SDL_AUDIODRIVER", None)
     else:
         os.environ["SDL_AUDIODRIVER"] = "alsa"
+        if "SDL_AUDIODEV" not in os.environ:
+            device = _dmix_device()
+            if device:
+                os.environ["SDL_AUDIODEV"] = device
 
 
 def is_activated() -> bool:
@@ -106,6 +126,42 @@ def init_mixer(frequency=None):
         return bool(pygame.mixer.get_init())
     except Exception:
         return False
+
+
+_SUSTAIN = None
+_SUSTAIN_CHANNEL = None
+
+
+def sustain_device():
+    """真机上用一段静音循环让 dmix/ALSA 设备全程保持打开，避免进出游戏时开关功放。
+
+    只在 mixer 已就绪时调用；失败静默降级，不影响游戏逻辑。
+    退出时仍由调用方的 pygame.quit() 统一关闭设备（只关一次）。
+    """
+    global _SUSTAIN, _SUSTAIN_CHANNEL
+    if is_no_audio() or want_simulate():
+        return
+    try:
+        import pygame
+        if not pygame.mixer.get_init():
+            return
+        if (_SUSTAIN_CHANNEL is not None
+                and getattr(_SUSTAIN_CHANNEL, "get_busy", lambda: False)()):
+            return
+        if _SUSTAIN is None:
+            buffer = io.BytesIO()
+            with wave.open(buffer, "wb") as source:
+                source.setnchannels(2)
+                source.setsampwidth(2)
+                source.setframerate(48000)
+                source.writeframes(b"\x00" * (48000 * 2 * 2 // 10))  # 0.1 秒静音
+            buffer.seek(0)
+            _SUSTAIN = pygame.mixer.Sound(file=buffer)
+        _SUSTAIN_CHANNEL = _SUSTAIN.play(loops=-1)
+        if _SUSTAIN_CHANNEL is not None:
+            _SUSTAIN_CHANNEL.set_volume(0.0)
+    except Exception:
+        pass
 
 
 def discover_sounds(media_dir, music=None):

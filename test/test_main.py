@@ -366,7 +366,7 @@ class LauncherAppTests(unittest.TestCase):
         app.simulate = True
         app.display = SimpleNamespace(portrait=True)
         steps = []
-        with patch.object(app, "close", side_effect=lambda: steps.append("close")), \
+        with patch.object(app, "close", side_effect=lambda keep_audio=False: steps.append("close")), \
                 patch.object(app, "open", side_effect=lambda after_game: steps.append(("open", after_game))), \
                 patch.object(main, "launch_game", side_effect=lambda *args: steps.append(args) or 0):
             app.play()
