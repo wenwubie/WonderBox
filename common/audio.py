@@ -74,8 +74,9 @@ def prepare() -> None:
     必须在 pygame.init()（即 spi_lcd.init()）之前调用：
     - 让 spi_lcd 跳过 dummy 音频驱动；
     - 真机固定 ALSA，模拟清掉 dummy 走系统声卡。
-    不强制 SDL_AUDIODEV=dmix——实测 googlevoicehat 上 dmix 打不开会令
-    mixer 初始化失败、语音/音效全没；走系统 default（自带 plug 转换）正常。
+    不强制 SDL_AUDIODEV——实测在 googlevoicehat 上直接指定 dmix 会令
+    mixer 初始化失败、语音/音效全没。多进程共享改由 Pi 上的
+    /etc/asound.conf（tools/asound.conf.dmix：default = plug + dmix）实现。
     """
     global _ACTIVATED
     if is_no_audio():
@@ -123,6 +124,8 @@ _SUSTAIN_CHANNEL = None
 def sustain_device():
     """真机上用一段静音循环让 dmix/ALSA 设备全程保持打开，避免进出游戏时开关功放。
 
+    配合 Pi 上的 /etc/asound.conf（default = plug + dmix）：启动器和子游戏
+    共享同一设备，静音循环额外保证 dmix 不会被最后一个客户端关闭。
     只在 mixer 已就绪时调用；失败静默降级，不影响游戏逻辑。
     退出时仍由调用方的 pygame.quit() 统一关闭设备（只关一次）。
     """

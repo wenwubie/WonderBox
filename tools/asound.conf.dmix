@@ -1,0 +1,37 @@
+# WonderBox / Raspberry Pi 音频配置
+# 安装到 /etc/asound.conf 后，系统 default = plug + dmix：
+#   plug 层负责采样率/格式转换（pygame 44.1k/48k 都能开）
+#   dmix 层负责多进程混音，启动器与子游戏共享同一 I2S 设备
+# 这样进出游戏不会反复 open/close 功放，避免切换界面的爆音。
+#
+# 声卡 id 取自 `aplay -L` 里的 CARD=sndrpigooglevoi；
+# 若你的 Pi 上 id 不同，把下面两处 sndrpigooglevoi 换成实际值。
+
+pcm.dmixer {
+    type dmix
+    ipc_key 2048
+    ipc_key_add_uid false
+    ipc_perm 0666
+    slave {
+        pcm "hw:sndrpigooglevoi,0"
+        rate 48000
+        channels 2
+        format S16_LE
+        period_size 1024
+        buffer_size 8192
+    }
+    bindings {
+        0 0
+        1 1
+    }
+}
+
+pcm.!default {
+    type plug
+    slave.pcm "dmixer"
+}
+
+ctl.!default {
+    type hw
+    card sndrpigooglevoi
+}
