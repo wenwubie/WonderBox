@@ -99,6 +99,16 @@ class SFX:
     def has(self, name):
         return name in self.sounds
 
+    def refresh_settings(self):
+        """重新读取声音设置并应用到已加载音源，使设置页调整立即生效。
+
+        SFX 构造时按当时的 settings.json 给每个 Sound 设音量；设置页只改文件，
+        已加载的 Sound 不会自动更新。调用本方法后不必重建 SFX 或重启程序。
+        """
+        self.voice_enabled = sound_settings.voice_enabled()
+        for name, sound in self.sounds.items():
+            sound_settings.apply(sound, "voice" if name == "welcome" else "sfx")
+
     def play(self, name, loops=0):
         """播放指定音效（名字=文件名去掉扩展名）。不存在则静默忽略。"""
         if not self.enabled:

@@ -792,6 +792,11 @@ class LauncherApp:
         ui_theme.set_style(names[index])  # 立即持久化
         apply_theme()
 
+    def apply_sound_settings(self):
+        """把已保存的声音设置立即应用到主界面音源，不必等进入子功能重建 SFX。"""
+        if self.sound is not None:
+            self.sound.refresh_settings()
+
     def step_setting(self, direction):
         """调节当前选中的设置项；风格/开关切换，音量按步长增减。"""
         key = SETTINGS_ITEMS[self.state.settings_selection][0]
@@ -801,6 +806,7 @@ class LauncherApp:
             sound_settings.toggle_voice()
         else:
             sound_settings.step(key, direction)
+        self.apply_sound_settings()  # 边调边生效，确认/返回时已是新值
 
     def run(self):
         while self.running:
@@ -827,6 +833,7 @@ class LauncherApp:
                 if result == "CLOSE_SETTINGS":
                     self.state.show_settings = False
                     self.state.settings_editing = False
+                    self.apply_sound_settings()  # 离开设置页再同步一次，确保已生效
                     break
                 if result in ("OPEN_CATEGORY", "CLOSE_CATEGORY"):
                     break
